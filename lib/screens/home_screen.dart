@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/animated_logo.dart';
-
+import 'weather_screen.dart';
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -168,10 +168,20 @@ class MetroTile extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(24),
       onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${item.title} modul uskoro dolazi')),
-        );
-      },
+  if (item.title == 'Vremenska prognoza') {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const WeatherScreen(),
+      ),
+    );
+    return;
+  }
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text('${item.title} modul uskoro dolazi')),
+  );
+},
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
