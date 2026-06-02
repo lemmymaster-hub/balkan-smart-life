@@ -1,10 +1,15 @@
+import 'dart:async';
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../widgets/animated_logo.dart';
 import 'weather_screen.dart';
 import 'login_screen.dart';
+import 'profile_screen.dart';
+import '../modules/parkiraj/screens/parkiraj_home_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,7 +19,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  String selectedCity = 'Sarajevo';
+  String selectedCity = 'Pale';
 
   final List<String> cities = [
     'Sarajevo',
@@ -37,6 +42,34 @@ class _HomeScreenState extends State<HomeScreen> {
     MenuItemData('Plati račun', Icons.receipt_long),
     MenuItemData('Novčanik', Icons.account_balance_wallet),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedWeatherCity();
+  }
+
+  Future<void> _loadSavedWeatherCity() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedCity = prefs.getString('weather_selected_city') ?? 'Pale';
+
+    if (!mounted) return;
+
+    setState(() {
+      selectedCity = savedCity;
+    });
+  }
+
+  Future<void> _openWeatherScreen() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const WeatherScreen(),
+      ),
+    );
+
+    await _loadSavedWeatherCity();
+  }
 
   void _showUserMenu() {
     showGeneralDialog(
@@ -76,22 +109,36 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Row(
+                        Row(
                           children: [
-                            CircleAvatar(
+                            const CircleAvatar(
                               radius: 20,
                               backgroundColor: Color(0xFF00E5FF),
                               child: Icon(Icons.person, color: Colors.white),
                             ),
-                            SizedBox(width: 10),
+                            const SizedBox(width: 10),
                             Expanded(
-                              child: Text(
-                                'BSL korisnik',
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'BSL korisnik',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    FirebaseAuth.instance.currentUser?.email ??
+                                        'Nema emaila',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white60,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
@@ -102,6 +149,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           text: 'User Settings',
                           onTap: () {
                             Navigator.pop(context);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const ProfileScreen(),
+                              ),
+                            );
                           },
                         ),
                         _menuItem(
@@ -177,10 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(width: 10),
             Text(
               text,
-              style: TextStyle(
-                color: color,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: color, fontSize: 14),
             ),
           ],
         ),
@@ -190,6 +240,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final dropdownValue = cities.contains(selectedCity) ? selectedCity : 'Pale';
+
     return Scaffold(
       backgroundColor: const Color(0xFF070B18),
       appBar: AppBar(
@@ -198,19 +250,19 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Balkan Smart Life'),
         actions: [
           IconButton(
-  icon: const Icon(
-    Icons.menu_rounded,
-    size: 32,
-    color: Colors.cyanAccent,
-    shadows: [
-      Shadow(
-        color: Colors.cyanAccent,
-        blurRadius: 12,
-      ),
-    ],
-  ),
-  onPressed: _showUserMenu,
-),
+            icon: const Icon(
+              Icons.menu_rounded,
+              size: 32,
+              color: Colors.cyanAccent,
+              shadows: [
+                Shadow(
+                  color: Colors.cyanAccent,
+                  blurRadius: 12,
+                ),
+              ],
+            ),
+            onPressed: _showUserMenu,
+          ),
         ],
       ),
       body: SafeArea(
@@ -253,7 +305,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: selectedCity,
+                    value: dropdownValue,
                     dropdownColor: const Color(0xFF111A33),
                     decoration: InputDecoration(
                       labelText: 'Izaberi grad',
@@ -277,10 +329,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     style: const TextStyle(color: Colors.white),
                     items: cities.map((city) {
-                      final active = city == 'Sarajevo';
+                      final active = city == selectedCity || city == 'Sarajevo';
 
                       return DropdownMenuItem<String>(
-                        value: active ? city : null,
+                        value: city,
                         enabled: active,
                         child: Row(
                           children: [
@@ -302,8 +354,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       );
                     }).toList(),
-                    onChanged: (value) {
+                    onChanged: (value) async {
                       if (value != null) {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setString('weather_selected_city', value);
+
+                        if (!mounted) return;
+
                         setState(() {
                           selectedCity = value;
                         });
@@ -326,7 +383,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   itemBuilder: (context, index) {
                     final item = menuItems[index];
-                    return MetroTile(item: item);
+
+                    return MetroTile(
+                      item: item,
+                      selectedCity: selectedCity,
+                      onOpenWeather: _openWeatherScreen,
+                    );
                   },
                 ),
               ),
@@ -345,102 +407,377 @@ class MenuItemData {
   MenuItemData(this.title, this.icon);
 }
 
-class MetroTile extends StatelessWidget {
+class MetroTile extends StatefulWidget {
   final MenuItemData item;
+  final String selectedCity;
+  final Future<void> Function()? onOpenWeather;
 
-  const MetroTile({super.key, required this.item});
+  const MetroTile({
+    super.key,
+    required this.item,
+    required this.selectedCity,
+    this.onOpenWeather,
+  });
+
+  @override
+  State<MetroTile> createState() => _MetroTileState();
+}
+
+class _MetroTileState extends State<MetroTile>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  Timer? _refreshTimer;
+
+  int temperature = 18;
+  String weatherType = 'sun';
+
+  bool get isWeatherTile => widget.item.title == 'Vremenska prognoza';
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat();
+
+    if (isWeatherTile) {
+      _setWeatherData();
+      _refreshTimer = Timer.periodic(const Duration(minutes: 15), (_) {
+        if (!mounted) return;
+        _setWeatherData();
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant MetroTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.selectedCity != widget.selectedCity && isWeatherTile) {
+      _setWeatherData();
+    }
+  }
+
+  void _setWeatherData() {
+    final hour = DateTime.now().hour;
+
+    setState(() {
+      if (hour >= 6 && hour < 12) {
+        temperature = 16;
+        weatherType = 'sun';
+      } else if (hour >= 12 && hour < 18) {
+        temperature = 22;
+        weatherType = 'cloud';
+      } else if (hour >= 18 && hour < 23) {
+        temperature = 14;
+        weatherType = 'rain';
+      } else {
+        temperature = 8;
+        weatherType = 'snow';
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  IconData _weatherIcon() {
+    switch (weatherType) {
+      case 'rain':
+        return Icons.water_drop_rounded;
+      case 'snow':
+        return Icons.ac_unit_rounded;
+      case 'cloud':
+        return Icons.cloud_rounded;
+      default:
+        return Icons.wb_sunny_rounded;
+    }
+  }
+
+  String _weatherText() {
+    switch (weatherType) {
+      case 'rain':
+        return 'Kiša';
+      case 'snow':
+        return 'Snijeg';
+      case 'cloud':
+        return 'Oblačno';
+      default:
+        return 'Sunčano';
+    }
+  }
+
+  List<Color> _tileColors() {
+    if (!isWeatherTile) {
+      return [
+        Colors.cyanAccent.withOpacity(0.35),
+        Colors.blueAccent.withOpacity(0.25),
+        Colors.deepPurpleAccent.withOpacity(0.28),
+      ];
+    }
+
+    switch (weatherType) {
+      case 'rain':
+        return [
+          Colors.blueGrey.withOpacity(0.55),
+          Colors.blueAccent.withOpacity(0.35),
+          Colors.indigo.withOpacity(0.34),
+        ];
+      case 'snow':
+        return [
+          Colors.white.withOpacity(0.38),
+          Colors.lightBlueAccent.withOpacity(0.35),
+          Colors.blueGrey.withOpacity(0.25),
+        ];
+      case 'cloud':
+        return [
+          Colors.blueGrey.withOpacity(0.45),
+          Colors.cyanAccent.withOpacity(0.25),
+          Colors.deepPurpleAccent.withOpacity(0.24),
+        ];
+      default:
+        return [
+          Colors.orangeAccent.withOpacity(0.45),
+          Colors.cyanAccent.withOpacity(0.28),
+          Colors.blueAccent.withOpacity(0.22),
+        ];
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       borderRadius: BorderRadius.circular(24),
-      onTap: () {
-        if (item.title == 'Vremenska prognoza') {
+      onTap: () async {
+        if (widget.item.title == 'Parkiraj.ba') {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const WeatherScreen(),
+              builder: (context) => const ParkirajHomeScreen(),
             ),
           );
           return;
         }
 
+        if (widget.item.title == 'Vremenska prognoza') {
+          await widget.onOpenWeather?.call();
+          return;
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${item.title} modul uskoro dolazi')),
+          SnackBar(content: Text('${widget.item.title} modul uskoro dolazi')),
         );
       },
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.cyanAccent.withOpacity(0.35),
-              Colors.blueAccent.withOpacity(0.25),
-              Colors.deepPurpleAccent.withOpacity(0.28),
-            ],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.cyanAccent.withOpacity(0.22),
-              blurRadius: 28,
-              spreadRadius: 1,
-            ),
-          ],
-          border: Border.all(color: Colors.white.withOpacity(0.18)),
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              top: -30,
-              right: -30,
-              child: Container(
-                width: 95,
-                height: 95,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.12),
-                ),
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: _tileColors(),
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: isWeatherTile
+                      ? Colors.cyanAccent.withOpacity(0.30)
+                      : Colors.cyanAccent.withOpacity(0.22),
+                  blurRadius: isWeatherTile ? 34 : 28,
+                  spreadRadius: 1,
+                ),
+              ],
+              border: Border.all(color: Colors.white.withOpacity(0.18)),
             ),
-            Positioned(
-              top: 12,
-              left: 12,
-              right: 12,
-              child: Container(
-                height: 38,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.white.withOpacity(0.22),
-                      Colors.white.withOpacity(0.02),
-                    ],
+            child: Stack(
+              children: [
+                if (isWeatherTile) _weatherAnimatedBackground(),
+                Positioned(
+                  top: -30,
+                  right: -30,
+                  child: Container(
+                    width: 95,
+                    height: 95,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withOpacity(0.12),
+                    ),
                   ),
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(item.icon, size: 42, color: Colors.white),
-                  const Spacer(),
-                  Text(
-                    item.title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 19,
-                      fontWeight: FontWeight.bold,
-                      height: 1.1,
+                Positioned(
+                  top: 12,
+                  left: 12,
+                  right: 12,
+                  child: Container(
+                    height: 38,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.white.withOpacity(0.22),
+                          Colors.white.withOpacity(0.02),
+                        ],
+                      ),
                     ),
+                  ),
+                ),
+                if (isWeatherTile)
+                  _weatherTileContent()
+                else
+                  Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(widget.item.icon, size: 42, color: Colors.white),
+                        const Spacer(),
+                        Text(
+                          widget.item.title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 19,
+                            fontWeight: FontWeight.bold,
+                            height: 1.1,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _weatherTileContent() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _weatherIcon(),
+                color: Colors.white,
+                size: 38,
+                shadows: const [
+                  Shadow(
+                    color: Colors.white,
+                    blurRadius: 14,
                   ),
                 ],
               ),
+              const Spacer(),
+              Text(
+                '$temperature°',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 34,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          Text(
+            widget.selectedCity,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
             ),
-          ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${_weatherText()} • Vrijeme',
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _weatherAnimatedBackground() {
+    if (weatherType == 'rain') {
+      return Stack(
+        children: List.generate(9, (index) {
+          final offset =
+              ((_controller.value + index * 0.13) % 1.0) * 150 - 30;
+
+          return Positioned(
+            top: offset,
+            left: 18.0 + index * 18,
+            child: Container(
+              width: 2,
+              height: 18,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.32),
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+        }),
+      );
+    }
+
+    if (weatherType == 'snow') {
+      return Stack(
+        children: List.generate(11, (index) {
+          final offset =
+              ((_controller.value + index * 0.11) % 1.0) * 150 - 20;
+
+          return Positioned(
+            top: offset,
+            left: 14.0 + index * 17,
+            child: Text(
+              '❄',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.42),
+                fontSize: 11 + (index % 3) * 3,
+              ),
+            ),
+          );
+        }),
+      );
+    }
+
+    if (weatherType == 'cloud') {
+      return Positioned(
+        right: -10 + (_controller.value * 18),
+        top: 34,
+        child: Icon(
+          Icons.cloud,
+          size: 82,
+          color: Colors.white.withOpacity(0.12),
+        ),
+      );
+    }
+
+    return Positioned(
+      right: -22,
+      top: -22,
+      child: Transform.rotate(
+        angle: _controller.value * 6.28,
+        child: Icon(
+          Icons.wb_sunny_rounded,
+          size: 105,
+          color: Colors.white.withOpacity(0.16),
         ),
       ),
     );

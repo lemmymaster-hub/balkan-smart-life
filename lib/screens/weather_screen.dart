@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../services/weather_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class WeatherScreen extends StatefulWidget {
   const WeatherScreen({super.key});
@@ -19,6 +20,40 @@ class _WeatherScreenState extends State<WeatherScreen> {
   void initState() {
     super.initState();
     weatherFuture = WeatherService.getWeather();
+    _loadSavedCity();
+  }
+
+  Future<void> _loadSavedCity() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedCity = prefs.getString('weather_selected_city') ?? 'Pale';
+
+    try {
+      final cityData = await WeatherService.searchCity(savedCity);
+
+      if (!mounted) return;
+
+      setState(() {
+        selectedCity = savedCity;
+        cityController.text = savedCity;
+        weatherFuture = WeatherService.getWeather(
+          latitude: cityData['latitude'],
+          longitude: cityData['longitude'],
+        );
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        selectedCity = savedCity;
+        cityController.text = savedCity;
+        weatherFuture = WeatherService.getWeather();
+      });
+    }
+  }
+
+  Future<void> _saveSelectedCity(String city) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('weather_selected_city', city);
   }
 
   @override
@@ -33,9 +68,13 @@ class _WeatherScreenState extends State<WeatherScreen> {
 
     try {
       final cityData = await WeatherService.searchCity(city);
+      final cityName = cityData['name'] ?? city;
+
+      await _saveSelectedCity(cityName);
 
       setState(() {
-        selectedCity = cityData['name'] ?? city;
+        selectedCity = cityName;
+        cityController.text = cityName;
         weatherFuture = WeatherService.getWeather(
           latitude: cityData['latitude'],
           longitude: cityData['longitude'],
@@ -149,7 +188,6 @@ class _WeatherScreenState extends State<WeatherScreen> {
                     onSearch: searchWeather,
                   ),
                   const SizedBox(height: 18),
-
                   if (snapshot.connectionState == ConnectionState.waiting)
                     const Padding(
                       padding: EdgeInsets.only(top: 120),
@@ -160,8 +198,8 @@ class _WeatherScreenState extends State<WeatherScreen> {
                       ),
                     )
                   else if (snapshot.hasError)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 100),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 100),
                       child: Center(
                         child: Text(
                           'Greška pri učitavanju vremenske prognoze',
@@ -393,21 +431,21 @@ class _CurrentWeatherCard extends StatelessWidget {
                 children: [
                   Icon(icon, color: iconColor, size: 72),
                   const SizedBox(width: 22),
-                 Expanded(
-  child: FittedBox(
-    fit: BoxFit.scaleDown,
-    alignment: Alignment.centerLeft,
-    child: Text(
-      '$temperature°C',
-      maxLines: 1,
-      style: const TextStyle(
-        color: Colors.white,
-        fontSize: 54,
-        fontWeight: FontWeight.bold,
-      ),
-    ),
-  ),
-),
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '$temperature°C',
+                        maxLines: 1,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 54,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 14),
