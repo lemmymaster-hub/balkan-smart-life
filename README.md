@@ -70,12 +70,6 @@ The long-term goal is to create a regional smart-city ecosystem adapted to the s
 
 ---
 
-## Screenshots
-
-(Add screenshots here)
-
----
-
 ## Development Status
 
 Active Development
