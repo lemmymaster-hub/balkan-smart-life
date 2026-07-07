@@ -1,19 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart';
 import '../models/parking_location.dart';
 
 class ParkingService {
   final FirebaseFirestore _firestore;
 
   ParkingService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+    : _firestore = firestore ?? FirebaseFirestore.instance;
 
-  Stream<List<ParkingLocation>> watchActiveParkings({
-    String? city,
-  }) {
-    Query<Map<String, dynamic>> query =
-    _firestore.collection('parkings');
-        
+  Stream<List<ParkingLocation>> watchActiveParkings({String? city}) {
+    Query<Map<String, dynamic>> query = _firestore.collection('parkings');
 
     if (city != null && city.trim().isNotEmpty) {
       query = query.where('city', isEqualTo: city.trim());
@@ -21,18 +16,14 @@ class ParkingService {
 
     return query.snapshots().map((snapshot) {
       return snapshot.docs
-    .map((doc) => ParkingLocation.fromFirestore(doc))
-    .where((parking) => parking.isActive)
-    .toList();
+          .map((doc) => ParkingLocation.fromFirestore(doc))
+          .where((parking) => parking.isActive)
+          .toList();
     });
   }
 
-  Future<List<ParkingLocation>> getActiveParkings({
-    String? city,
-  }) async {
-    Query<Map<String, dynamic>> query =
-    _firestore.collection('parkings');
-        
+  Future<List<ParkingLocation>> getActiveParkings({String? city}) async {
+    Query<Map<String, dynamic>> query = _firestore.collection('parkings');
 
     if (city != null && city.trim().isNotEmpty) {
       query = query.where('city', isEqualTo: city.trim());
@@ -41,9 +32,9 @@ class ParkingService {
     final snapshot = await query.get();
 
     return snapshot.docs
-    .map((doc) => ParkingLocation.fromFirestore(doc))
-    .where((parking) => parking.isActive)
-    .toList();
+        .map((doc) => ParkingLocation.fromFirestore(doc))
+        .where((parking) => parking.isActive)
+        .toList();
   }
 
   List<ParkingLocation> getFallbackParkings() {

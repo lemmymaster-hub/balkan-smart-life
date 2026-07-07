@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-
+import '../../../core/theme/bsl_design_system.dart';
 import '../models/parking_location.dart';
 import '../services/parking_service.dart';
+import 'package:flutter/services.dart';
+import 'dart:ui';
 
 class ParkingMapScreen extends StatefulWidget {
   const ParkingMapScreen({super.key});
@@ -13,6 +15,12 @@ class ParkingMapScreen extends StatefulWidget {
 
 class _ParkingMapScreenState extends State<ParkingMapScreen> {
   final ParkingService _parkingService = ParkingService();
+  String? _darkMapStyle;
+  Future<void> _loadMapStyle() async {
+    _darkMapStyle = await rootBundle.loadString(
+      'assets/maps/bsl_dark_map_style.json',
+    );
+  }
 
   static const CameraPosition _initialCameraPosition = CameraPosition(
     target: LatLng(43.8563, 18.4131),
@@ -20,6 +28,11 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
   );
 
   ParkingLocation? _selectedParking;
+  @override
+  void initState() {
+    super.initState();
+    _loadMapStyle();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,9 +55,7 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
           }
 
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
+            return const Center(child: CircularProgressIndicator());
           }
 
           final parkings = snapshot.data ?? [];
@@ -61,6 +72,11 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
           return Stack(
             children: [
               GoogleMap(
+                onMapCreated: (controller) {
+                  if (_darkMapStyle != null) {
+                    controller.setMapStyle(_darkMapStyle);
+                  }
+                },
                 initialCameraPosition: _initialCameraPosition,
                 myLocationButtonEnabled: true,
                 myLocationEnabled: false,
@@ -120,35 +136,83 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0B1226).withOpacity(0.92),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.local_parking_rounded, color: Colors.lightBlueAccent),
-          const SizedBox(width: 10),
-          const Expanded(
-            child: Text(
-              'Parkiraj.ba',
-              style: TextStyle(
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BslDecorations.glassCard(radius: BslRadius.large),
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(
+                Icons.arrow_back_ios_new_rounded,
                 color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
+                size: 18,
               ),
             ),
-          ),
-          Text(
-            '$totalParkings parkinga',
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.75),
-              fontSize: 13,
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF00D4FF), Color(0xFF245BFF)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF00D4FF).withValues(alpha: 0.35),
+                    blurRadius: 18,
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.local_parking_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Parkiraj.ba',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Pametno parkiranje u gradu',
+                    style: TextStyle(
+                      color: Color(0xFF8FA6C8),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(99),
+              ),
+              child: Text(
+                '$totalParkings',
+                style: const TextStyle(
+                  color: Color(0xFF2FE6FF),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -158,10 +222,7 @@ class _ParkingBottomCard extends StatelessWidget {
   final ParkingLocation parking;
   final VoidCallback onClose;
 
-  const _ParkingBottomCard({
-    required this.parking,
-    required this.onClose,
-  });
+  const _ParkingBottomCard({required this.parking, required this.onClose});
 
   @override
   Widget build(BuildContext context) {
@@ -171,18 +232,7 @@ class _ParkingBottomCard extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0B1226).withOpacity(0.96),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.35),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
+      decoration: BslDecorations.bottomPanel(),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -215,7 +265,7 @@ class _ParkingBottomCard extends StatelessWidget {
           Text(
             parking.address.isNotEmpty ? parking.address : parking.city,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.68),
+              color: Colors.white.withValues(alpha: 0.68),
               fontSize: 14,
             ),
           ),
@@ -225,7 +275,7 @@ class _ParkingBottomCard extends StatelessWidget {
             child: LinearProgressIndicator(
               value: occupancyPercent.clamp(0.0, 1.0),
               minHeight: 8,
-              backgroundColor: Colors.white.withOpacity(0.10),
+              backgroundColor: Colors.white.withValues(alpha: 0.10),
             ),
           ),
           const SizedBox(height: 14),
@@ -259,10 +309,7 @@ class _InfoPill extends StatelessWidget {
   final IconData icon;
   final String label;
 
-  const _InfoPill({
-    required this.icon,
-    required this.label,
-  });
+  const _InfoPill({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -270,7 +317,7 @@ class _InfoPill extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.07),
+          color: Colors.white.withValues(alpha: 0.07),
           borderRadius: BorderRadius.circular(99),
         ),
         child: Row(
