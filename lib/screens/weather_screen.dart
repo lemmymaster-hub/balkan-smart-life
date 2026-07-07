@@ -171,13 +171,13 @@ class _WeatherScreenState extends State<WeatherScreen> {
               Positioned(
                 top: -80,
                 right: -80,
-                child: _GlowCircle(color: Colors.cyanAccent.withOpacity(0.28)),
+                child: _GlowCircle(color: Colors.cyanAccent.withValues(alpha: 0.28)),
               ),
               Positioned(
                 bottom: -110,
                 left: -80,
                 child: _GlowCircle(
-                  color: Colors.deepPurpleAccent.withOpacity(0.30),
+                  color: Colors.deepPurpleAccent.withValues(alpha: 0.30),
                 ),
               ),
               ListView(
@@ -315,15 +315,15 @@ class _SearchWeatherPanel extends StatelessWidget {
             borderRadius: BorderRadius.circular(26),
             gradient: LinearGradient(
               colors: [
-                Colors.cyanAccent.withOpacity(0.18),
-                Colors.blueAccent.withOpacity(0.08),
-                Colors.deepPurpleAccent.withOpacity(0.16),
+                Colors.cyanAccent.withValues(alpha: 0.18),
+                Colors.blueAccent.withValues(alpha: 0.08),
+                Colors.deepPurpleAccent.withValues(alpha: 0.16),
               ],
             ),
-            border: Border.all(color: Colors.cyanAccent.withOpacity(0.35)),
+            border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.35)),
             boxShadow: [
               BoxShadow(
-                color: Colors.cyanAccent.withOpacity(0.18),
+                color: Colors.cyanAccent.withValues(alpha: 0.18),
                 blurRadius: 24,
                 spreadRadius: 1,
               ),
@@ -392,20 +392,20 @@ class _CurrentWeatherCard extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.cyanAccent.withOpacity(0.28),
-                Colors.blueAccent.withOpacity(0.15),
-                Colors.deepPurpleAccent.withOpacity(0.25),
+                Colors.cyanAccent.withValues(alpha: 0.28),
+                Colors.blueAccent.withValues(alpha: 0.15),
+                Colors.deepPurpleAccent.withValues(alpha: 0.25),
               ],
             ),
-            border: Border.all(color: Colors.cyanAccent.withOpacity(0.45)),
+            border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.45)),
             boxShadow: [
               BoxShadow(
-                color: Colors.cyanAccent.withOpacity(0.25),
+                color: Colors.cyanAccent.withValues(alpha: 0.25),
                 blurRadius: 35,
                 spreadRadius: 1,
               ),
               BoxShadow(
-                color: Colors.purpleAccent.withOpacity(0.18),
+                color: Colors.purpleAccent.withValues(alpha: 0.18),
                 blurRadius: 45,
                 spreadRadius: 2,
               ),
@@ -504,20 +504,20 @@ class _DailyWeatherCard extends StatelessWidget {
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
           colors: [
-            Colors.cyanAccent.withOpacity(0.18),
-            Colors.blueAccent.withOpacity(0.10),
-            Colors.deepPurpleAccent.withOpacity(0.18),
+            Colors.cyanAccent.withValues(alpha: 0.18),
+            Colors.blueAccent.withValues(alpha: 0.10),
+            Colors.deepPurpleAccent.withValues(alpha: 0.18),
           ],
         ),
-        border: Border.all(color: Colors.cyanAccent.withOpacity(0.35)),
+        border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.35)),
         boxShadow: [
           BoxShadow(
-            color: Colors.cyanAccent.withOpacity(0.16),
+            color: Colors.cyanAccent.withValues(alpha: 0.16),
             blurRadius: 22,
             spreadRadius: 1,
           ),
           BoxShadow(
-            color: Colors.purpleAccent.withOpacity(0.14),
+            color: Colors.purpleAccent.withValues(alpha: 0.14),
             blurRadius: 24,
             spreadRadius: 1,
           ),

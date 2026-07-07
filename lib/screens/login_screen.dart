@@ -39,7 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(18)),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: BorderSide(color: Colors.white.withOpacity(0.16)),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
@@ -122,15 +122,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        Colors.cyanAccent.withOpacity(0.13),
-                        Colors.blueAccent.withOpacity(0.09),
-                        Colors.deepPurpleAccent.withOpacity(0.10),
+                        Colors.cyanAccent.withValues(alpha: 0.13),
+                        Colors.blueAccent.withValues(alpha: 0.09),
+                        Colors.deepPurpleAccent.withValues(alpha: 0.10),
                       ],
                     ),
-                    border: Border.all(color: Colors.white.withOpacity(0.16)),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.cyanAccent.withOpacity(0.18),
+                        color: Colors.cyanAccent.withValues(alpha: 0.18),
                         blurRadius: 32,
                         spreadRadius: 1,
                       ),
@@ -181,7 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             backgroundColor: const Color(0xFF00E5FF),
                             foregroundColor: Colors.black,
                             elevation: 12,
-                            shadowColor: Colors.cyanAccent.withOpacity(0.35),
+                            shadowColor: Colors.cyanAccent.withValues(alpha: 0.35),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(18),
                             ),
@@ -210,7 +210,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 OutlinedButton(
                   style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: Colors.cyanAccent.withOpacity(0.7)),
+                    side: BorderSide(color: Colors.cyanAccent.withValues(alpha: 0.7)),
                     foregroundColor: Colors.cyanAccent,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 28,

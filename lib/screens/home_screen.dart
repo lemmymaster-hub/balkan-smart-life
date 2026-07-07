@@ -96,11 +96,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: const Color(0xBB0D1428),
                       borderRadius: BorderRadius.circular(22),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.18),
+                        color: Colors.white.withValues(alpha: 0.18),
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.cyanAccent.withOpacity(0.35),
+                          color: Colors.cyanAccent.withValues(alpha: 0.35),
                           blurRadius: 26,
                           spreadRadius: 1,
                         ),
@@ -274,7 +274,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: const Color(0xFF0D1428),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.cyanAccent.withOpacity(0.25),
+                    color: Colors.cyanAccent.withValues(alpha: 0.25),
                     blurRadius: 22,
                     spreadRadius: 1,
                   ),
@@ -305,7 +305,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: dropdownValue,
+                    initialValue: dropdownValue,
                     dropdownColor: const Color(0xFF111A33),
                     decoration: InputDecoration(
                       labelText: 'Izaberi grad',
@@ -317,7 +317,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide(
-                          color: Colors.white.withOpacity(0.22),
+                          color: Colors.white.withValues(alpha: 0.22),
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
@@ -516,36 +516,36 @@ class _MetroTileState extends State<MetroTile>
   List<Color> _tileColors() {
     if (!isWeatherTile) {
       return [
-        Colors.cyanAccent.withOpacity(0.35),
-        Colors.blueAccent.withOpacity(0.25),
-        Colors.deepPurpleAccent.withOpacity(0.28),
+        Colors.cyanAccent.withValues(alpha: 0.35),
+        Colors.blueAccent.withValues(alpha: 0.25),
+        Colors.deepPurpleAccent.withValues(alpha: 0.28),
       ];
     }
 
     switch (weatherType) {
       case 'rain':
         return [
-          Colors.blueGrey.withOpacity(0.55),
-          Colors.blueAccent.withOpacity(0.35),
-          Colors.indigo.withOpacity(0.34),
+          Colors.blueGrey.withValues(alpha: 0.55),
+          Colors.blueAccent.withValues(alpha: 0.35),
+          Colors.indigo.withValues(alpha: 0.34),
         ];
       case 'snow':
         return [
-          Colors.white.withOpacity(0.38),
-          Colors.lightBlueAccent.withOpacity(0.35),
-          Colors.blueGrey.withOpacity(0.25),
+          Colors.white.withValues(alpha: 0.38),
+          Colors.lightBlueAccent.withValues(alpha: 0.35),
+          Colors.blueGrey.withValues(alpha: 0.25),
         ];
       case 'cloud':
         return [
-          Colors.blueGrey.withOpacity(0.45),
-          Colors.cyanAccent.withOpacity(0.25),
-          Colors.deepPurpleAccent.withOpacity(0.24),
+          Colors.blueGrey.withValues(alpha: 0.45),
+          Colors.cyanAccent.withValues(alpha: 0.25),
+          Colors.deepPurpleAccent.withValues(alpha: 0.24),
         ];
       default:
         return [
-          Colors.orangeAccent.withOpacity(0.45),
-          Colors.cyanAccent.withOpacity(0.28),
-          Colors.blueAccent.withOpacity(0.22),
+          Colors.orangeAccent.withValues(alpha: 0.45),
+          Colors.cyanAccent.withValues(alpha: 0.28),
+          Colors.blueAccent.withValues(alpha: 0.22),
         ];
     }
   }
@@ -588,13 +588,13 @@ class _MetroTileState extends State<MetroTile>
               boxShadow: [
                 BoxShadow(
                   color: isWeatherTile
-                      ? Colors.cyanAccent.withOpacity(0.30)
-                      : Colors.cyanAccent.withOpacity(0.22),
+                      ? Colors.cyanAccent.withValues(alpha: 0.30)
+                      : Colors.cyanAccent.withValues(alpha: 0.22),
                   blurRadius: isWeatherTile ? 34 : 28,
                   spreadRadius: 1,
                 ),
               ],
-              border: Border.all(color: Colors.white.withOpacity(0.18)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
             ),
             child: Stack(
               children: [
@@ -607,7 +607,7 @@ class _MetroTileState extends State<MetroTile>
                     height: 95,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.12),
+                      color: Colors.white.withValues(alpha: 0.12),
                     ),
                   ),
                 ),
@@ -621,8 +621,8 @@ class _MetroTileState extends State<MetroTile>
                       borderRadius: BorderRadius.circular(20),
                       gradient: LinearGradient(
                         colors: [
-                          Colors.white.withOpacity(0.22),
-                          Colors.white.withOpacity(0.02),
+                          Colors.white.withValues(alpha: 0.22),
+                          Colors.white.withValues(alpha: 0.02),
                         ],
                       ),
                     ),
@@ -727,7 +727,7 @@ class _MetroTileState extends State<MetroTile>
               width: 2,
               height: 18,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.32),
+                color: Colors.white.withValues(alpha: 0.32),
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
@@ -748,7 +748,7 @@ class _MetroTileState extends State<MetroTile>
             child: Text(
               '❄',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.42),
+                color: Colors.white.withValues(alpha: 0.42),
                 fontSize: 11 + (index % 3) * 3,
               ),
             ),
@@ -764,7 +764,7 @@ class _MetroTileState extends State<MetroTile>
         child: Icon(
           Icons.cloud,
           size: 82,
-          color: Colors.white.withOpacity(0.12),
+          color: Colors.white.withValues(alpha: 0.12),
         ),
       );
     }
@@ -777,7 +777,7 @@ class _MetroTileState extends State<MetroTile>
         child: Icon(
           Icons.wb_sunny_rounded,
           size: 105,
-          color: Colors.white.withOpacity(0.16),
+          color: Colors.white.withValues(alpha: 0.16),
         ),
       ),
     );
