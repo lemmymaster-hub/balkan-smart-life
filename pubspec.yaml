@@ -31,13 +31,14 @@ dependencies:
   flutter:
     sdk: flutter
 
-  http: ^1.2.2
+  http: ^1.6.0
   cupertino_icons: ^1.0.8
   firebase_core: ^4.9.0
   firebase_auth: ^6.5.1
   cloud_firestore: ^6.0.0
   google_maps_flutter: ^2.9.0
   shared_preferences: ^2.3.2
+  provider: ^6.1.5+1
 dev_dependencies:
   flutter_test:
     sdk: flutter

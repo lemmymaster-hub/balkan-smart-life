@@ -1,218 +1,323 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+import '../../../core/services/google_places_service.dart';
 import '../../../core/theme/bsl_design_system.dart';
+import '../../../core/widgets/bsl_module_top_bar.dart';
 import '../models/parking_location.dart';
 import '../services/parking_service.dart';
-import 'package:flutter/services.dart';
-import 'dart:ui';
 
 class ParkingMapScreen extends StatefulWidget {
-  const ParkingMapScreen({super.key});
+  final String city;
+
+  const ParkingMapScreen({
+    super.key,
+    required this.city,
+  });
 
   @override
   State<ParkingMapScreen> createState() => _ParkingMapScreenState();
 }
 
 class _ParkingMapScreenState extends State<ParkingMapScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+
   final ParkingService _parkingService = ParkingService();
+  final GooglePlacesService _placesService = GooglePlacesService();
+
+  GoogleMapController? _mapController;
+  StreamSubscription<List<ParkingLocation>>? _parkingsSubscription;
+
   String? _darkMapStyle;
-  Future<void> _loadMapStyle() async {
-    _darkMapStyle = await rootBundle.loadString(
-      'assets/maps/bsl_dark_map_style.json',
-    );
-  }
+  bool _isLoading = true;
+  Object? _error;
+
+  List<ParkingLocation> _parkings = [];
+  ParkingLocation? _selectedParking;
 
   static const CameraPosition _initialCameraPosition = CameraPosition(
     target: LatLng(43.8563, 18.4131),
     zoom: 14,
   );
 
-  ParkingLocation? _selectedParking;
   @override
   void initState() {
     super.initState();
     _loadMapStyle();
+    _listenParkings();
+  }
+
+  Future<void> _loadMapStyle() async {
+    _darkMapStyle = await rootBundle.loadString(
+      'assets/maps/bsl_dark_map_style.json',
+    );
+
+    final controller = _mapController;
+    if (controller != null && _darkMapStyle != null) {
+      await controller.setMapStyle(_darkMapStyle);
+    }
+  }
+
+  void _listenParkings() {
+    _parkingsSubscription?.cancel();
+
+    _parkingsSubscription = _parkingService.watchActiveParkings().listen(
+      (parkings) {
+        if (!mounted) return;
+
+        setState(() {
+          _parkings = parkings;
+          _isLoading = false;
+          _error = null;
+
+          if (_selectedParking != null) {
+            final selectedStillExists = parkings.any(
+              (parking) => parking.id == _selectedParking!.id,
+            );
+
+            if (!selectedStillExists) {
+              _selectedParking = null;
+            }
+          }
+        });
+      },
+      onError: (error) {
+        if (!mounted) return;
+
+        setState(() {
+          _error = error;
+          _isLoading = false;
+        });
+      },
+    );
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF070B18),
-      body: StreamBuilder<List<ParkingLocation>>(
-        stream: _parkingService.watchActiveParkings(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'Firestore greška:\n${snapshot.error}',
-                  style: const TextStyle(color: Colors.white),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            );
-          }
+  void dispose() {
+    _parkingsSubscription?.cancel();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    _mapController?.dispose();
+    super.dispose();
+  }
 
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+  Future<void> _searchParkingOrPlace(String value) async {
+    final rawQuery = value.trim();
 
-          final parkings = snapshot.data ?? [];
+    if (rawQuery.length < 2) return;
 
-          if (parkings.isEmpty) {
-            return const Center(
-              child: Text(
-                'Nema parkinga u bazi',
-                style: TextStyle(color: Colors.white),
-              ),
-            );
-          }
+    final query = rawQuery.toLowerCase();
 
-          return Stack(
-            children: [
-              GoogleMap(
-                onMapCreated: (controller) {
-                  if (_darkMapStyle != null) {
-                    controller.setMapStyle(_darkMapStyle);
-                  }
-                },
-                initialCameraPosition: _initialCameraPosition,
-                myLocationButtonEnabled: true,
-                myLocationEnabled: false,
-                zoomControlsEnabled: false,
-                mapType: MapType.normal,
-                markers: parkings.map((parking) {
-                  return Marker(
-                    markerId: MarkerId(parking.id),
-                    position: parking.position,
-                    infoWindow: InfoWindow(
-                      title: parking.name,
-                      snippet:
-                          '${parking.freeSpots}/${parking.totalSpots} slobodno',
-                    ),
-                    onTap: () {
-                      setState(() {
-                        _selectedParking = parking;
-                      });
-                    },
-                  );
-                }).toSet(),
-              ),
+    debugPrint('BSL SEARCH START: $rawQuery');
 
-              Positioned(
-                top: 48,
-                left: 16,
-                right: 16,
-                child: _TopBar(totalParkings: parkings.length),
-              ),
+    final parkingMatches = _parkings.where((parking) {
+      final name = parking.name.toLowerCase();
+      final address = parking.address.toLowerCase();
+      final city = parking.city.toLowerCase();
 
-              if (_selectedParking != null)
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: 24,
-                  child: _ParkingBottomCard(
-                    parking: _selectedParking!,
-                    onClose: () {
-                      setState(() {
-                        _selectedParking = null;
-                      });
-                    },
-                  ),
-                ),
-            ],
-          );
-        },
+      return name.contains(query) ||
+          address.contains(query) ||
+          city.contains(query);
+    }).toList();
+
+    if (parkingMatches.isNotEmpty) {
+      final parking = parkingMatches.first;
+
+      debugPrint('BSL SEARCH PARKING MATCH: ${parking.name}');
+
+      await _animateTo(
+        target: parking.position,
+        zoom: 17,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _selectedParking = parking;
+      });
+
+      _searchFocusNode.unfocus();
+      return;
+    }
+
+    debugPrint('BSL SEARCH PLACES QUERY: $rawQuery');
+
+    final places = await _placesService.searchPlaces(
+      input: rawQuery,
+      language: 'bs',
+      country: 'ba',
+    );
+
+    if (!mounted) return;
+
+    if (places.isEmpty) {
+      debugPrint('BSL SEARCH NO RESULTS: $rawQuery');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Nema rezultata za "$rawQuery"'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      return;
+    }
+
+    final place = places.first;
+
+    debugPrint('BSL SEARCH PLACE MATCH: ${place.title} ${place.location}');
+
+    await _animateTo(
+      target: place.location,
+      zoom: 16,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _selectedParking = null;
+    });
+
+    _searchFocusNode.unfocus();
+  }
+
+  Future<void> _animateTo({
+    required LatLng target,
+    required double zoom,
+  }) async {
+    final controller = _mapController;
+
+    if (controller == null) {
+      debugPrint('BSL MAP CONTROLLER IS NULL');
+      return;
+    }
+
+    await controller.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: target,
+          zoom: zoom,
+        ),
       ),
     );
   }
-}
 
-class _TopBar extends StatelessWidget {
-  final int totalParkings;
+  Set<Marker> _buildParkingMarkers() {
+    return _parkings.map((parking) {
+      return Marker(
+        markerId: MarkerId(parking.id),
+        position: parking.position,
+        infoWindow: InfoWindow(
+          title: parking.name,
+          snippet: '${parking.freeSpots}/${parking.totalSpots} slobodno',
+        ),
+        onTap: () async {
+          await _animateTo(
+            target: parking.position,
+            zoom: 17,
+          );
 
-  const _TopBar({required this.totalParkings});
+          if (!mounted) return;
+
+          setState(() {
+            _selectedParking = parking;
+          });
+        },
+      );
+    }).toSet();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BslDecorations.glassCard(radius: BslRadius.large),
-        child: Row(
-          children: [
-            IconButton(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: Colors.white,
-                size: 18,
-              ),
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF070B18),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Firestore greška:\n$_error',
+              style: const TextStyle(color: Colors.white),
+              textAlign: TextAlign.center,
             ),
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF00D4FF), Color(0xFF245BFF)],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF00D4FF).withValues(alpha: 0.35),
-                    blurRadius: 18,
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.local_parking_rounded,
-                color: Colors.white,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Parkiraj.ba',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Pametno parkiranje u gradu',
-                    style: TextStyle(
-                      color: Color(0xFF8FA6C8),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.07),
-                borderRadius: BorderRadius.circular(99),
-              ),
-              child: Text(
-                '$totalParkings',
-                style: const TextStyle(
-                  color: Color(0xFF2FE6FF),
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
+      );
+    }
+
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF070B18),
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_parkings.isEmpty) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF070B18),
+        body: Center(
+          child: Text(
+            'Nema parkinga u bazi',
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF070B18),
+      body: Stack(
+        children: [
+          GoogleMap(
+            onMapCreated: (controller) async {
+              _mapController = controller;
+
+              if (_darkMapStyle != null) {
+                await controller.setMapStyle(_darkMapStyle);
+              }
+            },
+            initialCameraPosition: _initialCameraPosition,
+            myLocationButtonEnabled: true,
+            myLocationEnabled: false,
+            zoomControlsEnabled: false,
+            mapType: MapType.normal,
+            markers: _buildParkingMarkers(),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: BslModuleTopBar(
+              title: 'Parkiraj.ba',
+              subtitle: widget.city,
+              badge: '${_parkings.length} parkinga',
+              searchHint: 'Pretraži parking ili adresu...',
+              searchController: _searchController,
+              searchFocusNode: _searchFocusNode,
+              onSearchSubmitted: _searchParkingOrPlace,
+            ),
+          ),
+          if (_selectedParking != null)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 24,
+              child: _ParkingBottomCard(
+                parking: _selectedParking!,
+                onClose: () {
+                  setState(() {
+                    _selectedParking = null;
+                  });
+                },
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -222,7 +327,10 @@ class _ParkingBottomCard extends StatelessWidget {
   final ParkingLocation parking;
   final VoidCallback onClose;
 
-  const _ParkingBottomCard({required this.parking, required this.onClose});
+  const _ParkingBottomCard({
+    required this.parking,
+    required this.onClose,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -241,7 +349,7 @@ class _ParkingBottomCard extends StatelessWidget {
             children: [
               const Icon(
                 Icons.local_parking_rounded,
-                color: Colors.lightBlueAccent,
+                color: BslColors.cyan,
                 size: 28,
               ),
               const SizedBox(width: 12),
@@ -309,7 +417,10 @@ class _InfoPill extends StatelessWidget {
   final IconData icon;
   final String label;
 
-  const _InfoPill({required this.icon, required this.label});
+  const _InfoPill({
+    required this.icon,
+    required this.label,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -323,7 +434,7 @@ class _InfoPill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.lightBlueAccent, size: 16),
+            Icon(icon, color: BslColors.cyan, size: 16),
             const SizedBox(width: 6),
             Flexible(
               child: Text(

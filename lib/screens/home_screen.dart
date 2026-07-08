@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:ui';
-
+import 'package:provider/provider.dart';
+import '../core/context/city_context.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
 
 import '../widgets/animated_logo.dart';
 import 'weather_screen.dart';
@@ -19,20 +20,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  String selectedCity = 'Pale';
-
-  final List<String> cities = [
-    'Sarajevo',
-    'Banja Luka',
-    'Mostar',
-    'Tuzla',
-    'Zenica',
-    'Bihać',
-    'Trebinje',
-    'Pale',
-    'Istočno Sarajevo',
-  ];
-
   final List<MenuItemData> menuItems = [
     MenuItemData('Parkiraj.ba', Icons.local_parking),
     MenuItemData('Gradski prevoz', Icons.tram),
@@ -46,20 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSavedWeatherCity();
   }
-
-  Future<void> _loadSavedWeatherCity() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedCity = prefs.getString('weather_selected_city') ?? 'Pale';
-
-    if (!mounted) return;
-
-    setState(() {
-      selectedCity = savedCity;
-    });
-  }
-
   Future<void> _openWeatherScreen() async {
     await Navigator.push(
       context,
@@ -68,7 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    await _loadSavedWeatherCity();
+  
   }
 
   void _showUserMenu() {
@@ -238,9 +212,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final dropdownValue = cities.contains(selectedCity) ? selectedCity : 'Pale';
+ @override
+Widget build(BuildContext context) {
+  final cityContext = context.watch<CityContext>();
+  final selectedCity = cityContext.selectedCity;
+  final cities = cityContext.cities;
+  final dropdownValue = cities.contains(selectedCity) ? selectedCity : 'Pale';
 
     return Scaffold(
       backgroundColor: const Color(0xFF070B18),
@@ -354,18 +331,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       );
                     }).toList(),
-                    onChanged: (value) async {
-                      if (value != null) {
-                        final prefs = await SharedPreferences.getInstance();
-                        await prefs.setString('weather_selected_city', value);
-
-                        if (!mounted) return;
-
-                        setState(() {
-                          selectedCity = value;
-                        });
-                      }
-                    },
+                   onChanged: (value) async {
+  if (value != null) {
+    await context.read<CityContext>().setCity(value);
+  }
+},
                   ),
                 ],
               ),
@@ -559,7 +529,9 @@ class _MetroTileState extends State<MetroTile>
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const ParkirajHomeScreen(),
+              builder: (context) => ParkirajHomeScreen(
+  city: widget.selectedCity,
+),
             ),
           );
           return;
