@@ -230,7 +230,123 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
       );
     }).toSet();
   }
+void _showParkingDetails(ParkingLocation parking) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: false,
+    builder: (context) {
+      return SafeArea(
+        child: Container(
+  constraints: BoxConstraints(
+    maxHeight: MediaQuery.of(context).size.height * 0.45,
+  ),
+  margin: const EdgeInsets.all(16),
+  padding: const EdgeInsets.all(20),
+          decoration: BslDecorations.bottomDock(),
+          child: Column(
+  mainAxisSize: MainAxisSize.min,
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    Center(
+      child: Container(
+        width: 42,
+        height: 4,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.25),
+          borderRadius: BorderRadius.circular(99),
+        ),
+      ),
+    ),
+    const SizedBox(height: 18),
 
+    Row(
+      children: [
+        const Icon(
+          Icons.local_parking_rounded,
+          color: BslColors.cyan,
+          size: 30,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            parking.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 21,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ],
+    ),
+
+    const SizedBox(height: 8),
+
+    Text(
+      parking.address.isNotEmpty ? parking.address : parking.city,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: Colors.white.withValues(alpha: 0.68),
+        fontSize: 14,
+      ),
+    ),
+
+    const SizedBox(height: 18),
+
+    Row(
+      children: [
+        Expanded(
+          child: _DetailMiniCard(
+            icon: Icons.event_available_rounded,
+            title: 'Slobodno',
+            value: '${parking.freeSpots}',
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _DetailMiniCard(
+            icon: Icons.local_parking_rounded,
+            title: 'Ukupno',
+            value: '${parking.totalSpots}',
+          ),
+        ),
+      ],
+    ),
+
+    const SizedBox(height: 10),
+
+    Row(
+      children: [
+        Expanded(
+          child: _DetailMiniCard(
+            icon: Icons.payments_rounded,
+            title: 'Cijena',
+            value: '${parking.pricePerHour.toStringAsFixed(2)} KM/h',
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _DetailMiniCard(
+            icon: Icons.schedule_rounded,
+            title: 'Vrijeme',
+            value: parking.workingHours.isNotEmpty
+                ? parking.workingHours
+                : 'Nije uneseno',
+          ),
+        ),
+      ],
+    ),
+  ],
+),
+        ),
+      );
+    },
+  );
+}
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
@@ -303,20 +419,33 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
               onSearchSubmitted: _searchParkingOrPlace,
             ),
           ),
-          if (_selectedParking != null)
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 24,
-              child: _ParkingBottomCard(
-                parking: _selectedParking!,
-                onClose: () {
-                  setState(() {
-                    _selectedParking = null;
-                  });
-                },
-              ),
+          AnimatedPositioned(
+  duration: const Duration(milliseconds: 250),
+  curve: Curves.easeOutCubic,
+  left: 0,
+  right: 0,
+  bottom: _selectedParking == null ? -220 : 0,
+  child: AnimatedOpacity(
+    duration: const Duration(milliseconds: 220),
+    opacity: _selectedParking == null ? 0 : 1,
+    child: IgnorePointer(
+      ignoring: _selectedParking == null,
+      child: _selectedParking == null
+          ? const SizedBox.shrink()
+          : _ParkingBottomCard(
+              parking: _selectedParking!,
+              onClose: () {
+                setState(() {
+                  _selectedParking = null;
+                });
+              },
+              onDetails: () {
+                _showParkingDetails(_selectedParking!);
+              },
             ),
+    ),
+  ),
+),
         ],
       ),
     );
@@ -326,11 +455,13 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
 class _ParkingBottomCard extends StatelessWidget {
   final ParkingLocation parking;
   final VoidCallback onClose;
+  final VoidCallback onDetails;
 
-  const _ParkingBottomCard({
-    required this.parking,
-    required this.onClose,
-  });
+ const _ParkingBottomCard({
+  required this.parking,
+  required this.onClose,
+  required this.onDetails,
+});
 
   @override
   Widget build(BuildContext context) {
@@ -339,8 +470,8 @@ class _ParkingBottomCard extends StatelessWidget {
         : 1 - (parking.freeSpots / parking.totalSpots);
 
     return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BslDecorations.bottomPanel(),
+  padding: const EdgeInsets.all(18),
+  decoration: BslDecorations.bottomDock(),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -433,7 +564,7 @@ class _ParkingBottomCard extends StatelessWidget {
                 child: _ParkingActionButton(
                   icon: Icons.info_outline_rounded,
                   label: 'Detalji',
-                  onTap: () {},
+                  onTap: onDetails,
                   secondary: true,
                 ),
               ),
@@ -444,6 +575,7 @@ class _ParkingBottomCard extends StatelessWidget {
                   label: 'Plati',
                   onTap: () {},
                 ),
+                
               ),
             ],
           ),
@@ -556,6 +688,71 @@ class _ParkingActionButton extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+class _DetailMiniCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String value;
+
+  const _DetailMiniCard({
+    required this.icon,
+    required this.title,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 74,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.10),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            color: BslColors.cyan,
+            size: 19,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.62),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

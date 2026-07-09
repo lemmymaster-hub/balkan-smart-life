@@ -87,7 +87,31 @@ class BslDecorations {
   static BoxDecoration bottomPanel() {
     return glassCard(radius: BslRadius.xl, alpha: 0.92);
   }
-
+static BoxDecoration bottomDock() {
+  return BoxDecoration(
+    gradient: const LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        BslColors.glassCyan,
+        BslColors.glassBlue,
+        BslColors.glassPurple,
+      ],
+    ),
+    borderRadius: const BorderRadius.only(
+      topLeft: Radius.circular(BslRadius.xl),
+      topRight: Radius.circular(BslRadius.xl),
+    ),
+    border: Border.all(
+      color: BslColors.cyan.withValues(alpha: 0.42),
+      width: 1.2,
+    ),
+    boxShadow: [
+      ...BslShadows.cyanGlow(alpha: 0.16),
+      ...BslShadows.deepShadow(),
+    ],
+  );
+}
   static BoxDecoration softPill() {
     return BoxDecoration(
       color: Colors.white.withValues(alpha: 0.12),
