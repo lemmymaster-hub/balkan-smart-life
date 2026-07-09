@@ -356,6 +356,8 @@ class _ParkingBottomCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   parking.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 19,
@@ -365,13 +367,18 @@ class _ParkingBottomCard extends StatelessWidget {
               ),
               IconButton(
                 onPressed: onClose,
-                icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                icon: const Icon(
+                  Icons.close_rounded,
+                  color: Colors.white70,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 6),
           Text(
             parking.address.isNotEmpty ? parking.address : parking.city,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.68),
               fontSize: 14,
@@ -389,14 +396,18 @@ class _ParkingBottomCard extends StatelessWidget {
           const SizedBox(height: 14),
           Row(
             children: [
-              _InfoPill(
-                icon: Icons.event_available_rounded,
-                label: '${parking.freeSpots}/${parking.totalSpots} slobodno',
+              Expanded(
+                child: _InfoPill(
+                  icon: Icons.event_available_rounded,
+                  label: '${parking.freeSpots}/${parking.totalSpots} slobodno',
+                ),
               ),
               const SizedBox(width: 8),
-              _InfoPill(
-                icon: Icons.payments_rounded,
-                label: '${parking.pricePerHour.toStringAsFixed(2)} KM/h',
+              Expanded(
+                child: _InfoPill(
+                  icon: Icons.payments_rounded,
+                  label: '${parking.pricePerHour.toStringAsFixed(2)} KM/h',
+                ),
               ),
             ],
           ),
@@ -407,6 +418,35 @@ class _ParkingBottomCard extends StatelessWidget {
               label: parking.workingHours,
             ),
           ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _ParkingActionButton(
+                  icon: Icons.navigation_rounded,
+                  label: 'Navigacija',
+                  onTap: () {},
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ParkingActionButton(
+                  icon: Icons.info_outline_rounded,
+                  label: 'Detalji',
+                  onTap: () {},
+                  secondary: true,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ParkingActionButton(
+                  icon: Icons.credit_card_rounded,
+                  label: 'Plati',
+                  onTap: () {},
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -424,30 +464,97 @@ class _InfoPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Flexible(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.07),
-          borderRadius: BorderRadius.circular(99),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: BslColors.cyan, size: 16),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: BslColors.cyan,
+            size: 16,
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
               ),
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ParkingActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool secondary;
+
+  const _ParkingActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.secondary = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final backgroundColor = secondary
+        ? Colors.white.withValues(alpha: 0.07)
+        : BslColors.cyan.withValues(alpha: 0.18);
+
+    final borderColor = secondary
+        ? Colors.white.withValues(alpha: 0.10)
+        : BslColors.cyan.withValues(alpha: 0.35);
+
+    final textColor = secondary ? Colors.white : BslColors.cyan;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          height: 46,
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                color: textColor,
+                size: 18,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
