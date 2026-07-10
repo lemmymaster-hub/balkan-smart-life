@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../core/context/city_context.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
+import '../../core/startup/bsl_startup_service.dart';
 
 import '../widgets/animated_logo.dart';
 import 'weather_screen.dart';
@@ -20,6 +20,33 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final BslStartupService _startupService = BslStartupService();
+Future<void> _initializeBsl() async {
+  final result = await _startupService.initialize();
+
+  if (!mounted) return;
+
+  setState(() {
+    _startupResult = result;
+    _isStartupLoading = false;
+  });
+
+  final location = result.location;
+
+  if (location != null) {
+    debugPrint(
+      'BSL STARTUP LOCATION: '
+      '${location.latitude}, ${location.longitude}, '
+      '${location.city}, ${location.municipality}, ${location.country}',
+    );
+  } else {
+    debugPrint(
+      'BSL STARTUP LOCATION ERROR: ${result.locationError}',
+    );
+  }
+}
+BslStartupResult? _startupResult;
+bool _isStartupLoading = true;
   final List<MenuItemData> menuItems = [
     MenuItemData('Parkiraj.ba', Icons.local_parking),
     MenuItemData('Gradski prevoz', Icons.tram),
@@ -33,6 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _initializeBsl();
   }
   Future<void> _openWeatherScreen() async {
     await Navigator.push(
