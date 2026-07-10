@@ -1,9 +1,11 @@
 import 'dart:async';
-
+import 'dart:ui' as ui;
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-
+import '../../../core/widgets/bsl_progress_bar.dart';
 import '../../../core/services/google_places_service.dart';
 import '../../../core/theme/bsl_design_system.dart';
 import '../../../core/widgets/bsl_module_top_bar.dart';
@@ -30,6 +32,13 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
   final GooglePlacesService _placesService = GooglePlacesService();
 
   GoogleMapController? _mapController;
+  BitmapDescriptor? _greenParkingMarker;
+BitmapDescriptor? _orangeParkingMarker;
+BitmapDescriptor? _redParkingMarker;
+
+BitmapDescriptor? _selectedGreenParkingMarker;
+BitmapDescriptor? _selectedOrangeParkingMarker;
+BitmapDescriptor? _selectedRedParkingMarker;
   StreamSubscription<List<ParkingLocation>>? _parkingsSubscription;
 
   String? _darkMapStyle;
@@ -48,6 +57,7 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
   void initState() {
     super.initState();
     _loadMapStyle();
+    _loadParkingMarker();
     _listenParkings();
   }
 
@@ -61,7 +71,197 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
       await controller.setMapStyle(_darkMapStyle);
     }
   }
+Future<void> _loadParkingMarker() async {
+  final results = await Future.wait([
+  _createParkingMarker(
+    statusColor: const Color(0xFF22C55E),
+    width: 42,
+    height: 46,
+  ),
+  _createParkingMarker(
+    statusColor: const Color(0xFFF59E0B),
+    width: 42,
+    height: 46,
+  ),
+  _createParkingMarker(
+    statusColor: const Color(0xFFEF4444),
+    width: 42,
+    height: 46,
+  ),
+  _createParkingMarker(
+    statusColor: const Color(0xFF22C55E),
+    width: 42,
+    height: 46,
+    selected: true,
+  ),
+  _createParkingMarker(
+    statusColor: const Color(0xFFF59E0B),
+    width: 42,
+    height: 46,
+    selected: true,
+  ),
+  _createParkingMarker(
+    statusColor: const Color(0xFFEF4444),
+    width: 42,
+    height: 46,
+    selected: true,
+  ),
+]);
 
+  if (!mounted) return;
+
+  setState(() {
+    _greenParkingMarker = results[0];
+    _orangeParkingMarker = results[1];
+    _redParkingMarker = results[2];
+
+    _selectedGreenParkingMarker = results[3];
+    _selectedOrangeParkingMarker = results[4];
+    _selectedRedParkingMarker = results[5];
+  });
+}
+
+Future<BitmapDescriptor> _createParkingMarker({
+  required Color statusColor,
+  required int width,
+  required int height,
+  bool selected = false,
+}) async {
+  final assetData = await rootBundle.load(
+    'assets/markers/bsl_parking_marker.png',
+  );
+
+  final Uint8List assetBytes = assetData.buffer.asUint8List();
+
+  final codec = await ui.instantiateImageCodec(
+    assetBytes,
+    targetWidth: width,
+    targetHeight: height,
+  );
+
+  final frame = await codec.getNextFrame();
+  final sourceImage = frame.image;
+
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+
+  canvas.drawImage(
+    sourceImage,
+    Offset.zero,
+    Paint()..isAntiAlias = true,
+  );
+if (selected) {
+  final glowPaint = Paint()
+    ..colorFilter = ColorFilter.mode(
+      BslColors.cyan.withValues(alpha: 0.70),
+      BlendMode.srcATop,
+    )
+    ..maskFilter = const MaskFilter.blur(
+      BlurStyle.normal,
+      7,
+    )
+    ..isAntiAlias = true;
+
+  canvas.drawImage(
+    sourceImage,
+    Offset.zero,
+    glowPaint,
+  );
+
+ if (selected) {
+  canvas.drawImage(
+    sourceImage,
+    Offset.zero,
+    Paint()
+      ..colorFilter = ColorFilter.mode(
+        BslColors.cyan.withValues(alpha: 0.70),
+        BlendMode.srcATop,
+      )
+      ..maskFilter = const MaskFilter.blur(
+        BlurStyle.normal,
+        7,
+      )
+      ..isAntiAlias = true,
+  );
+}
+
+canvas.drawImage(
+  sourceImage,
+  Offset.zero,
+  Paint()..isAntiAlias = true,
+);
+}
+  final statusCenter = Offset(
+    width * 0.79,
+    height * 0.19,
+  );
+
+  final statusRadius = width * 0.075;
+
+  // Vanjski glow statusa.
+  canvas.drawCircle(
+    statusCenter,
+    statusRadius * 1.75,
+    Paint()
+      ..color = statusColor.withValues(alpha: selected ? 0.45 : 0.30)
+      ..maskFilter = const MaskFilter.blur(
+        BlurStyle.normal,
+        8,
+      ),
+  );
+
+  // Bijeli vanjski prsten.
+  canvas.drawCircle(
+    statusCenter,
+    statusRadius * 1.25,
+    Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true,
+  );
+
+  // Obojeni prsten.
+  canvas.drawCircle(
+    statusCenter,
+    statusRadius,
+    Paint()
+      ..color = statusColor
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true,
+  );
+
+  // Svjetliji centar za blagi 3D efekat.
+  canvas.drawCircle(
+    Offset(
+      statusCenter.dx - statusRadius * 0.22,
+      statusCenter.dy - statusRadius * 0.22,
+    ),
+    statusRadius * 0.45,
+    Paint()
+      ..color = Colors.white.withValues(alpha: 0.38)
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true,
+  );
+
+  final picture = recorder.endRecording();
+
+  final outputImage = await picture.toImage(
+    width,
+    height,
+  );
+
+  final outputData = await outputImage.toByteData(
+  format: ui.ImageByteFormat.png,
+);
+
+if (outputData == null) {
+  throw StateError('Nije moguće kreirati parking marker.');
+}
+
+return BitmapDescriptor.bytes(
+  outputData.buffer.asUint8List(),
+);
+}
   void _listenParkings() {
     _parkingsSubscription?.cancel();
 
@@ -207,29 +407,62 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
   }
 
   Set<Marker> _buildParkingMarkers() {
-    return _parkings.map((parking) {
-      return Marker(
-        markerId: MarkerId(parking.id),
-        position: parking.position,
-        infoWindow: InfoWindow(
-          title: parking.name,
-          snippet: '${parking.freeSpots}/${parking.totalSpots} slobodno',
-        ),
-        onTap: () async {
-          await _animateTo(
-            target: parking.position,
-            zoom: 17,
-          );
+  return _parkings.map((parking) {
+    final occupancyPercent = parking.totalSpots <= 0
+        ? 0.0
+        : 1 - (parking.freeSpots / parking.totalSpots);
 
-          if (!mounted) return;
+    final isSelected = _selectedParking?.id == parking.id;
 
-          setState(() {
-            _selectedParking = parking;
-          });
-        },
-      );
-    }).toSet();
+    final markerIcon = _getParkingMarkerIcon(
+      occupancyPercent: occupancyPercent,
+      isSelected: isSelected,
+    );
+
+    return Marker(
+      markerId: MarkerId(parking.id),
+      position: parking.position,
+      icon: markerIcon,
+      anchor: const Offset(0.5, 1.0),
+      infoWindow: InfoWindow(
+        title: parking.name,
+        snippet: '${parking.freeSpots}/${parking.totalSpots} slobodno',
+      ),
+      onTap: () async {
+        await _animateTo(
+          target: parking.position,
+          zoom: 17,
+        );
+
+        if (!mounted) return;
+
+        setState(() {
+          _selectedParking = parking;
+        });
+      },
+    );
+  }).toSet();
+}
+BitmapDescriptor _getParkingMarkerIcon({
+  required double occupancyPercent,
+  required bool isSelected,
+}) {
+  if (occupancyPercent >= 0.85) {
+    return isSelected
+        ? _selectedRedParkingMarker ?? BitmapDescriptor.defaultMarker
+        : _redParkingMarker ?? BitmapDescriptor.defaultMarker;
   }
+
+  if (occupancyPercent >= 0.60) {
+    return isSelected
+        ? _selectedOrangeParkingMarker ?? BitmapDescriptor.defaultMarker
+        : _orangeParkingMarker ?? BitmapDescriptor.defaultMarker;
+  }
+
+  return isSelected
+      ? _selectedGreenParkingMarker ?? BitmapDescriptor.defaultMarker
+      : _greenParkingMarker ?? BitmapDescriptor.defaultMarker;
+}
 void _showParkingDetails(ParkingLocation parking) {
   showModalBottomSheet(
     context: context,
@@ -243,7 +476,7 @@ void _showParkingDetails(ParkingLocation parking) {
   ),
   margin: const EdgeInsets.all(16),
   padding: const EdgeInsets.all(20),
-          decoration: BslDecorations.bottomDock(),
+          decoration: BslDecorations.bottomPanel(),
           child: Column(
   mainAxisSize: MainAxisSize.min,
   crossAxisAlignment: CrossAxisAlignment.start,
@@ -390,21 +623,22 @@ void _showParkingDetails(ParkingLocation parking) {
       backgroundColor: const Color(0xFF070B18),
       body: Stack(
         children: [
-          GoogleMap(
-            onMapCreated: (controller) async {
-              _mapController = controller;
+         GoogleMap(
+  onMapCreated: (controller) async {
+    _mapController = controller;
 
-              if (_darkMapStyle != null) {
-                await controller.setMapStyle(_darkMapStyle);
-              }
-            },
-            initialCameraPosition: _initialCameraPosition,
-            myLocationButtonEnabled: true,
-            myLocationEnabled: false,
-            zoomControlsEnabled: false,
-            mapType: MapType.normal,
-            markers: _buildParkingMarkers(),
-          ),
+    if (_darkMapStyle != null) {
+      await controller.setMapStyle(_darkMapStyle);
+    }
+  },
+  initialCameraPosition: _initialCameraPosition,
+  myLocationButtonEnabled: true,
+  myLocationEnabled: false,
+  zoomControlsEnabled: false,
+  mapToolbarEnabled: false,
+  mapType: MapType.normal,
+  markers: _buildParkingMarkers(),
+),
           Positioned(
             top: 0,
             left: 0,
@@ -516,14 +750,15 @@ class _ParkingBottomCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(99),
-            child: LinearProgressIndicator(
-              value: occupancyPercent.clamp(0.0, 1.0),
-              minHeight: 8,
-              backgroundColor: Colors.white.withValues(alpha: 0.10),
-            ),
-          ),
+
+BslProgressBar(
+  value: occupancyPercent,
+  label: 'Popunjenost',
+  totalSegments: parking.totalSpots,
+  filledSegments: parking.totalSpots - parking.freeSpots,
+  subtitle:
+      '${parking.freeSpots} slobodnih od ${parking.totalSpots} mjesta',
+),
           const SizedBox(height: 14),
           Row(
             children: [

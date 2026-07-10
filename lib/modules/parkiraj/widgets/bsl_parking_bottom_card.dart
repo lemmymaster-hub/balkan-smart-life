@@ -34,11 +34,11 @@ class BslParkingBottomCard extends StatelessWidget {
         color: const Color(0xEE0B1220),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: Colors.white.withOpacity(0.10),
+          color: Colors.white.withValues(alpha: 0.10),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.35),
+            color: Colors.black.withValues(alpha: 0.35),
             blurRadius: 24,
             offset: const Offset(0, 12),
           ),
@@ -55,7 +55,7 @@ class BslParkingBottomCard extends StatelessWidget {
                   width: 46,
                   height: 46,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0EA5E9).withOpacity(0.15),
+                    color: const Color(0xFF0EA5E9).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: const Icon(
@@ -80,9 +80,9 @@ class BslParkingBottomCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.14),
+                    color: statusColor.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: statusColor.withOpacity(0.45)),
+                    border: Border.all(color: statusColor.withValues(alpha: 0.45)),
                   ),
                   child: Text(
                     isOpen ? 'Otvoreno' : 'Zatvoreno',
@@ -170,10 +170,10 @@ class _InfoChip extends StatelessWidget {
         height: 38,
         padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.06),
+          color: Colors.white.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: Colors.white.withOpacity(0.08),
+            color: Colors.white.withValues(alpha: 0.08),
           ),
         ),
         child: Row(
@@ -216,12 +216,12 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bgColor = secondary
-        ? Colors.white.withOpacity(0.07)
-        : const Color(0xFF0EA5E9).withOpacity(0.22);
+        ? Colors.white.withValues(alpha: 0.07)
+        : const Color(0xFF0EA5E9).withValues(alpha: 0.22);
 
     final borderColor = secondary
-        ? Colors.white.withOpacity(0.10)
-        : const Color(0xFF38BDF8).withOpacity(0.35);
+        ? Colors.white.withValues(alpha: 0.10)
+        : const Color(0xFF38BDF8).withValues(alpha: 0.35);
 
     return InkWell(
       onTap: onTap,
