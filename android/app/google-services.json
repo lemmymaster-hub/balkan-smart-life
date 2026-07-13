@@ -8,6 +8,25 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:816588351345:android:e9453b200f3356491bf8d0",
+        "android_client_info": {
+          "package_name": "ba.balkansmartlife.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCJq7fKtJ9R4i-9QmH3ShLmtCTaYoJYnmw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:816588351345:android:a29048a09ae2fe5d1bf8d0",
         "android_client_info": {
           "package_name": "com.example.bsl_app"

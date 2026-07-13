@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../core/context/city_context.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../../core/startup/bsl_startup_service.dart';
+import '../core/startup/bsl_startup_service.dart';
 
 import '../widgets/animated_logo.dart';
 import 'weather_screen.dart';
