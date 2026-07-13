@@ -61,14 +61,15 @@ BitmapDescriptor? _selectedRedParkingMarker;
   }
 
   Future<void> _loadMapStyle() async {
-    _darkMapStyle = await rootBundle.loadString(
+    final style = await rootBundle.loadString(
       'assets/maps/bsl_dark_map_style.json',
     );
 
-    final controller = _mapController;
-    if (controller != null && _darkMapStyle != null) {
-      await controller.setMapStyle(_darkMapStyle);
-    }
+    if (!mounted) return;
+
+    setState(() {
+      _darkMapStyle = style;
+    });
   }
 Future<void> _loadParkingMarker() async {
   final results = await Future.wait([
@@ -622,22 +623,19 @@ void _showParkingDetails(ParkingLocation parking) {
       backgroundColor: const Color(0xFF070B18),
       body: Stack(
         children: [
-         GoogleMap(
-  onMapCreated: (controller) async {
-    _mapController = controller;
-
-    if (_darkMapStyle != null) {
-      await controller.setMapStyle(_darkMapStyle);
-    }
-  },
-  initialCameraPosition: _initialCameraPosition,
-  myLocationButtonEnabled: true,
-  myLocationEnabled: false,
-  zoomControlsEnabled: false,
-  mapToolbarEnabled: false,
-  mapType: MapType.normal,
-  markers: _buildParkingMarkers(),
-),
+          GoogleMap(
+            onMapCreated: (controller) {
+              _mapController = controller;
+            },
+            initialCameraPosition: _initialCameraPosition,
+            myLocationButtonEnabled: true,
+            myLocationEnabled: false,
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
+            mapType: MapType.normal,
+            style: _darkMapStyle,
+            markers: _buildParkingMarkers(),
+          ),
           Positioned(
             top: 0,
             left: 0,

@@ -8,7 +8,6 @@ import '../core/startup/bsl_startup_service.dart';
 
 import '../widgets/animated_logo.dart';
 import 'weather_screen.dart';
-import 'login_screen.dart';
 import 'profile_screen.dart';
 import '../modules/parkiraj/screens/parkiraj_home_screen.dart';
 
@@ -26,11 +25,6 @@ Future<void> _initializeBsl() async {
 
   if (!mounted) return;
 
-  setState(() {
-    _startupResult = result;
-    _isStartupLoading = false;
-  });
-
   final location = result.location;
 
   if (location != null) {
@@ -45,8 +39,6 @@ Future<void> _initializeBsl() async {
     );
   }
 }
-BslStartupResult? _startupResult;
-bool _isStartupLoading = true;
   final List<MenuItemData> menuItems = [
     MenuItemData('Parkiraj.ba', Icons.local_parking),
     MenuItemData('Gradski prevoz', Icons.tram),
@@ -174,16 +166,6 @@ bool _isStartupLoading = true;
                           onTap: () async {
                             Navigator.pop(context);
                             await FirebaseAuth.instance.signOut();
-
-                            if (!mounted) return;
-
-                            Navigator.pushAndRemoveUntil(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const LoginScreen(),
-                              ),
-                              (route) => false,
-                            );
                           },
                         ),
                       ],
