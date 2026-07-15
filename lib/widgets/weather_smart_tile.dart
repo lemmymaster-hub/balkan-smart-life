@@ -15,15 +15,15 @@ class WeatherSmartTile extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Colors.cyanAccent.withOpacity(0.30),
-            Colors.blueAccent.withOpacity(0.22),
-            Colors.deepPurpleAccent.withOpacity(0.24),
+            Colors.cyanAccent.withValues(alpha: 0.30),
+            Colors.blueAccent.withValues(alpha: 0.22),
+            Colors.deepPurpleAccent.withValues(alpha: 0.24),
           ],
         ),
-        border: Border.all(color: Colors.white.withOpacity(0.18)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
         boxShadow: [
           BoxShadow(
-            color: Colors.cyanAccent.withOpacity(0.20),
+            color: Colors.cyanAccent.withValues(alpha: 0.20),
             blurRadius: 26,
             spreadRadius: 1,
           ),

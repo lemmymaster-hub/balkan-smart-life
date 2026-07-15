@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'home_screen.dart';
 import 'login_screen.dart';
 import '../services/auth_service.dart';
 import '../widgets/animated_logo.dart';
@@ -41,7 +40,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(18)),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: BorderSide(color: Colors.white.withOpacity(0.16)),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
@@ -60,15 +59,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         email: emailController.text,
         password: passwordController.text,
       );
-
-      if (!context.mounted) return;
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
     } catch (e) {
-      if (!context.mounted) return;
+      if (!mounted) return;
 
       ScaffoldMessenger.of(
         context,
@@ -129,15 +121,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        Colors.cyanAccent.withOpacity(0.13),
-                        Colors.blueAccent.withOpacity(0.09),
-                        Colors.deepPurpleAccent.withOpacity(0.10),
+                        Colors.cyanAccent.withValues(alpha: 0.13),
+                        Colors.blueAccent.withValues(alpha: 0.09),
+                        Colors.deepPurpleAccent.withValues(alpha: 0.10),
                       ],
                     ),
-                    border: Border.all(color: Colors.white.withOpacity(0.16)),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.cyanAccent.withOpacity(0.18),
+                        color: Colors.cyanAccent.withValues(alpha: 0.18),
                         blurRadius: 32,
                         spreadRadius: 1,
                       ),
@@ -199,7 +191,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             backgroundColor: const Color(0xFF00E5FF),
                             foregroundColor: Colors.black,
                             elevation: 12,
-                            shadowColor: Colors.cyanAccent.withOpacity(0.35),
+                            shadowColor: Colors.cyanAccent.withValues(alpha: 0.35),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(18),
                             ),

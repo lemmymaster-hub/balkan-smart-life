@@ -1,18 +1,31 @@
 import 'package:flutter/material.dart';
-import 'screens/home_screen.dart';
-import 'screens/login_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
+
+import 'core/context/city_context.dart';
+import 'screens/home_screen.dart';
+import 'screens/login_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   try {
     await Firebase.initializeApp();
-    print('Firebase initialized OK');
+    debugPrint('Firebase initialized OK');
   } catch (e) {
-    print('Firebase init error: $e');
+    debugPrint('Firebase init error: $e');
   }
-  runApp(const BslApp());
+
+  final cityContext = CityContext();
+  await cityContext.load();
+
+  runApp(
+    ChangeNotifierProvider<CityContext>.value(
+      value: cityContext,
+      child: const BslApp(),
+    ),
+  );
 }
 
 class BslApp extends StatelessWidget {
@@ -24,25 +37,24 @@ class BslApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Balkan Smart Life',
       theme: ThemeData.dark(),
-      home: StreamBuilder(
-  stream: FirebaseAuth.instance.authStateChanges(),
-  builder: (context, snapshot) {
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+          }
 
-    if (snapshot.connectionState == ConnectionState.waiting) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
+          if (snapshot.hasData) {
+            return const HomeScreen();
+          }
 
-    if (snapshot.hasData) {
-      return const HomeScreen();
-    }
-
-    return const LoginScreen();
-  },
-),
+          return const LoginScreen();
+        },
+      ),
     );
   }
 }

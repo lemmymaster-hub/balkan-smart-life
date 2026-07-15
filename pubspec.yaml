@@ -31,13 +31,16 @@ dependencies:
   flutter:
     sdk: flutter
 
-  http: ^1.2.2
+  http: ^1.6.0
   cupertino_icons: ^1.0.8
+  geolocator: ^13.0.2
+  geocoding: ^4.0.0
   firebase_core: ^4.9.0
   firebase_auth: ^6.5.1
   cloud_firestore: ^6.0.0
   google_maps_flutter: ^2.9.0
   shared_preferences: ^2.3.2
+  provider: ^6.1.5+1
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -58,6 +61,8 @@ flutter:
  
   assets:
     - assets/images/bsl_logo.png
+    - assets/maps/bsl_dark_map_style.json
+    - assets/markers/bsl_parking_marker.png
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

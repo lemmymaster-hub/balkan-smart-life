@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:ui';
-
+import 'package:provider/provider.dart';
+import '../core/context/city_context.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../core/startup/bsl_startup_service.dart';
 
 import '../widgets/animated_logo.dart';
 import 'weather_screen.dart';
-import 'login_screen.dart';
 import 'profile_screen.dart';
 import '../modules/parkiraj/screens/parkiraj_home_screen.dart';
 
@@ -19,20 +19,26 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  String selectedCity = 'Pale';
+  final BslStartupService _startupService = BslStartupService();
+Future<void> _initializeBsl() async {
+  final result = await _startupService.initialize();
 
-  final List<String> cities = [
-    'Sarajevo',
-    'Banja Luka',
-    'Mostar',
-    'Tuzla',
-    'Zenica',
-    'Bihać',
-    'Trebinje',
-    'Pale',
-    'Istočno Sarajevo',
-  ];
+  if (!mounted) return;
 
+  final location = result.location;
+
+  if (location != null) {
+    debugPrint(
+      'BSL STARTUP LOCATION: '
+      '${location.latitude}, ${location.longitude}, '
+      '${location.city}, ${location.municipality}, ${location.country}',
+    );
+  } else {
+    debugPrint(
+      'BSL STARTUP LOCATION ERROR: ${result.locationError}',
+    );
+  }
+}
   final List<MenuItemData> menuItems = [
     MenuItemData('Parkiraj.ba', Icons.local_parking),
     MenuItemData('Gradski prevoz', Icons.tram),
@@ -46,20 +52,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSavedWeatherCity();
+    _initializeBsl();
   }
-
-  Future<void> _loadSavedWeatherCity() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedCity = prefs.getString('weather_selected_city') ?? 'Pale';
-
-    if (!mounted) return;
-
-    setState(() {
-      selectedCity = savedCity;
-    });
-  }
-
   Future<void> _openWeatherScreen() async {
     await Navigator.push(
       context,
@@ -68,7 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    await _loadSavedWeatherCity();
+  
   }
 
   void _showUserMenu() {
@@ -96,11 +90,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: const Color(0xBB0D1428),
                       borderRadius: BorderRadius.circular(22),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.18),
+                        color: Colors.white.withValues(alpha: 0.18),
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.cyanAccent.withOpacity(0.35),
+                          color: Colors.cyanAccent.withValues(alpha: 0.35),
                           blurRadius: 26,
                           spreadRadius: 1,
                         ),
@@ -172,16 +166,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           onTap: () async {
                             Navigator.pop(context);
                             await FirebaseAuth.instance.signOut();
-
-                            if (!mounted) return;
-
-                            Navigator.pushAndRemoveUntil(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const LoginScreen(),
-                              ),
-                              (route) => false,
-                            );
                           },
                         ),
                       ],
@@ -238,9 +222,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final dropdownValue = cities.contains(selectedCity) ? selectedCity : 'Pale';
+ @override
+Widget build(BuildContext context) {
+  final cityContext = context.watch<CityContext>();
+  final selectedCity = cityContext.selectedCity;
+  final cities = cityContext.cities;
+  final dropdownValue = cities.contains(selectedCity) ? selectedCity : 'Pale';
 
     return Scaffold(
       backgroundColor: const Color(0xFF070B18),
@@ -274,7 +261,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: const Color(0xFF0D1428),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.cyanAccent.withOpacity(0.25),
+                    color: Colors.cyanAccent.withValues(alpha: 0.25),
                     blurRadius: 22,
                     spreadRadius: 1,
                   ),
@@ -305,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: dropdownValue,
+                    initialValue: dropdownValue,
                     dropdownColor: const Color(0xFF111A33),
                     decoration: InputDecoration(
                       labelText: 'Izaberi grad',
@@ -317,7 +304,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide(
-                          color: Colors.white.withOpacity(0.22),
+                          color: Colors.white.withValues(alpha: 0.22),
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
@@ -354,18 +341,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       );
                     }).toList(),
-                    onChanged: (value) async {
-                      if (value != null) {
-                        final prefs = await SharedPreferences.getInstance();
-                        await prefs.setString('weather_selected_city', value);
-
-                        if (!mounted) return;
-
-                        setState(() {
-                          selectedCity = value;
-                        });
-                      }
-                    },
+                   onChanged: (value) async {
+  if (value != null) {
+    await context.read<CityContext>().setCity(value);
+  }
+},
                   ),
                 ],
               ),
@@ -516,36 +496,36 @@ class _MetroTileState extends State<MetroTile>
   List<Color> _tileColors() {
     if (!isWeatherTile) {
       return [
-        Colors.cyanAccent.withOpacity(0.35),
-        Colors.blueAccent.withOpacity(0.25),
-        Colors.deepPurpleAccent.withOpacity(0.28),
+        Colors.cyanAccent.withValues(alpha: 0.35),
+        Colors.blueAccent.withValues(alpha: 0.25),
+        Colors.deepPurpleAccent.withValues(alpha: 0.28),
       ];
     }
 
     switch (weatherType) {
       case 'rain':
         return [
-          Colors.blueGrey.withOpacity(0.55),
-          Colors.blueAccent.withOpacity(0.35),
-          Colors.indigo.withOpacity(0.34),
+          Colors.blueGrey.withValues(alpha: 0.55),
+          Colors.blueAccent.withValues(alpha: 0.35),
+          Colors.indigo.withValues(alpha: 0.34),
         ];
       case 'snow':
         return [
-          Colors.white.withOpacity(0.38),
-          Colors.lightBlueAccent.withOpacity(0.35),
-          Colors.blueGrey.withOpacity(0.25),
+          Colors.white.withValues(alpha: 0.38),
+          Colors.lightBlueAccent.withValues(alpha: 0.35),
+          Colors.blueGrey.withValues(alpha: 0.25),
         ];
       case 'cloud':
         return [
-          Colors.blueGrey.withOpacity(0.45),
-          Colors.cyanAccent.withOpacity(0.25),
-          Colors.deepPurpleAccent.withOpacity(0.24),
+          Colors.blueGrey.withValues(alpha: 0.45),
+          Colors.cyanAccent.withValues(alpha: 0.25),
+          Colors.deepPurpleAccent.withValues(alpha: 0.24),
         ];
       default:
         return [
-          Colors.orangeAccent.withOpacity(0.45),
-          Colors.cyanAccent.withOpacity(0.28),
-          Colors.blueAccent.withOpacity(0.22),
+          Colors.orangeAccent.withValues(alpha: 0.45),
+          Colors.cyanAccent.withValues(alpha: 0.28),
+          Colors.blueAccent.withValues(alpha: 0.22),
         ];
     }
   }
@@ -559,7 +539,9 @@ class _MetroTileState extends State<MetroTile>
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const ParkirajHomeScreen(),
+              builder: (context) => ParkirajHomeScreen(
+  city: widget.selectedCity,
+),
             ),
           );
           return;
@@ -588,13 +570,13 @@ class _MetroTileState extends State<MetroTile>
               boxShadow: [
                 BoxShadow(
                   color: isWeatherTile
-                      ? Colors.cyanAccent.withOpacity(0.30)
-                      : Colors.cyanAccent.withOpacity(0.22),
+                      ? Colors.cyanAccent.withValues(alpha: 0.30)
+                      : Colors.cyanAccent.withValues(alpha: 0.22),
                   blurRadius: isWeatherTile ? 34 : 28,
                   spreadRadius: 1,
                 ),
               ],
-              border: Border.all(color: Colors.white.withOpacity(0.18)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
             ),
             child: Stack(
               children: [
@@ -607,7 +589,7 @@ class _MetroTileState extends State<MetroTile>
                     height: 95,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.12),
+                      color: Colors.white.withValues(alpha: 0.12),
                     ),
                   ),
                 ),
@@ -621,8 +603,8 @@ class _MetroTileState extends State<MetroTile>
                       borderRadius: BorderRadius.circular(20),
                       gradient: LinearGradient(
                         colors: [
-                          Colors.white.withOpacity(0.22),
-                          Colors.white.withOpacity(0.02),
+                          Colors.white.withValues(alpha: 0.22),
+                          Colors.white.withValues(alpha: 0.02),
                         ],
                       ),
                     ),
@@ -727,7 +709,7 @@ class _MetroTileState extends State<MetroTile>
               width: 2,
               height: 18,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.32),
+                color: Colors.white.withValues(alpha: 0.32),
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
@@ -748,7 +730,7 @@ class _MetroTileState extends State<MetroTile>
             child: Text(
               '❄',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.42),
+                color: Colors.white.withValues(alpha: 0.42),
                 fontSize: 11 + (index % 3) * 3,
               ),
             ),
@@ -764,7 +746,7 @@ class _MetroTileState extends State<MetroTile>
         child: Icon(
           Icons.cloud,
           size: 82,
-          color: Colors.white.withOpacity(0.12),
+          color: Colors.white.withValues(alpha: 0.12),
         ),
       );
     }
@@ -777,7 +759,7 @@ class _MetroTileState extends State<MetroTile>
         child: Icon(
           Icons.wb_sunny_rounded,
           size: 105,
-          color: Colors.white.withOpacity(0.16),
+          color: Colors.white.withValues(alpha: 0.16),
         ),
       ),
     );

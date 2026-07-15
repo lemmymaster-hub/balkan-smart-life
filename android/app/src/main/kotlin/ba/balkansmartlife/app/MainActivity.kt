@@ -1,4 +1,4 @@
-package com.example.bsl_app
+package ba.balkansmartlife.app
 
 import io.flutter.embedding.android.FlutterActivity
 
