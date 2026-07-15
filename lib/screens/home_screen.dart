@@ -1,15 +1,17 @@
 import 'dart:async';
 import 'dart:ui';
-import 'package:provider/provider.dart';
-import '../core/context/city_context.dart';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../core/startup/bsl_startup_service.dart';
 
-import '../widgets/animated_logo.dart';
-import 'weather_screen.dart';
-import 'profile_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../core/context/city_context.dart';
+import '../core/startup/bsl_startup_service.dart';
 import '../modules/parkiraj/screens/parkiraj_home_screen.dart';
+import '../services/weather_service.dart';
+import '../widgets/animated_logo.dart';
+import 'profile_screen.dart';
+import 'weather_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,25 +22,24 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final BslStartupService _startupService = BslStartupService();
-Future<void> _initializeBsl() async {
-  final result = await _startupService.initialize();
+  Future<void> _initializeBsl() async {
+    final result = await _startupService.initialize();
 
-  if (!mounted) return;
+    if (!mounted) return;
 
-  final location = result.location;
+    final location = result.location;
 
-  if (location != null) {
-    debugPrint(
-      'BSL STARTUP LOCATION: '
-      '${location.latitude}, ${location.longitude}, '
-      '${location.city}, ${location.municipality}, ${location.country}',
-    );
-  } else {
-    debugPrint(
-      'BSL STARTUP LOCATION ERROR: ${result.locationError}',
-    );
+    if (location != null) {
+      debugPrint(
+        'BSL STARTUP LOCATION: '
+        '${location.latitude}, ${location.longitude}, '
+        '${location.city}, ${location.municipality}, ${location.country}',
+      );
+    } else {
+      debugPrint('BSL STARTUP LOCATION ERROR: ${result.locationError}');
+    }
   }
-}
+
   final List<MenuItemData> menuItems = [
     MenuItemData('Parkiraj.ba', Icons.local_parking),
     MenuItemData('Gradski prevoz', Icons.tram),
@@ -54,15 +55,16 @@ Future<void> _initializeBsl() async {
     super.initState();
     _initializeBsl();
   }
+
   Future<void> _openWeatherScreen() async {
+    final selectedCity = context.read<CityContext>().selectedCity;
+
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => const WeatherScreen(),
+        builder: (context) => WeatherScreen(initialCity: selectedCity),
       ),
     );
-
-  
   }
 
   void _showUserMenu() {
@@ -181,15 +183,16 @@ Future<void> _initializeBsl() async {
         return FadeTransition(
           opacity: animation,
           child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, -0.10),
-              end: Offset.zero,
-            ).animate(
-              CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeOutCubic,
-              ),
-            ),
+            position:
+                Tween<Offset>(
+                  begin: const Offset(0, -0.10),
+                  end: Offset.zero,
+                ).animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  ),
+                ),
             child: child,
           ),
         );
@@ -212,22 +215,19 @@ Future<void> _initializeBsl() async {
           children: [
             Icon(icon, color: color, size: 20),
             const SizedBox(width: 10),
-            Text(
-              text,
-              style: TextStyle(color: color, fontSize: 14),
-            ),
+            Text(text, style: TextStyle(color: color, fontSize: 14)),
           ],
         ),
       ),
     );
   }
 
- @override
-Widget build(BuildContext context) {
-  final cityContext = context.watch<CityContext>();
-  final selectedCity = cityContext.selectedCity;
-  final cities = cityContext.cities;
-  final dropdownValue = cities.contains(selectedCity) ? selectedCity : 'Pale';
+  @override
+  Widget build(BuildContext context) {
+    final cityContext = context.watch<CityContext>();
+    final selectedCity = cityContext.selectedCity;
+    final cities = cityContext.cities;
+    final dropdownValue = cities.contains(selectedCity) ? selectedCity : 'Pale';
 
     return Scaffold(
       backgroundColor: const Color(0xFF070B18),
@@ -241,12 +241,7 @@ Widget build(BuildContext context) {
               Icons.menu_rounded,
               size: 32,
               color: Colors.cyanAccent,
-              shadows: [
-                Shadow(
-                  color: Colors.cyanAccent,
-                  blurRadius: 12,
-                ),
-              ],
+              shadows: [Shadow(color: Colors.cyanAccent, blurRadius: 12)],
             ),
             onPressed: _showUserMenu,
           ),
@@ -309,43 +304,23 @@ Widget build(BuildContext context) {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(
-                          color: Colors.cyanAccent,
-                        ),
+                        borderSide: const BorderSide(color: Colors.cyanAccent),
                       ),
                     ),
                     style: const TextStyle(color: Colors.white),
-                    items: cities.map((city) {
-                      final active = city == selectedCity || city == 'Sarajevo';
-
-                      return DropdownMenuItem<String>(
-                        value: city,
-                        enabled: active,
-                        child: Row(
-                          children: [
-                            Text(
-                              city,
-                              style: TextStyle(
-                                color: active ? Colors.white : Colors.white38,
-                              ),
-                            ),
-                            if (!active) ...[
-                              const SizedBox(width: 8),
-                              const Icon(
-                                Icons.lock,
-                                size: 15,
-                                color: Colors.white38,
-                              ),
-                            ],
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                   onChanged: (value) async {
-  if (value != null) {
-    await context.read<CityContext>().setCity(value);
-  }
-},
+                    items: cities
+                        .map(
+                          (city) => DropdownMenuItem<String>(
+                            value: city,
+                            child: Text(city),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) async {
+                      if (value != null) {
+                        await context.read<CityContext>().setCity(value);
+                      }
+                    },
                   ),
                 ],
               ),
@@ -408,8 +383,9 @@ class _MetroTileState extends State<MetroTile>
   late final AnimationController _controller;
   Timer? _refreshTimer;
 
-  int temperature = 18;
-  String weatherType = 'sun';
+  int? temperature;
+  String weatherType = 'cloud';
+  int _weatherRequestId = 0;
 
   bool get isWeatherTile => widget.item.title == 'Vremenska prognoza';
 
@@ -423,10 +399,10 @@ class _MetroTileState extends State<MetroTile>
     )..repeat();
 
     if (isWeatherTile) {
-      _setWeatherData();
+      _loadWeatherData();
       _refreshTimer = Timer.periodic(const Duration(minutes: 15), (_) {
         if (!mounted) return;
-        _setWeatherData();
+        _loadWeatherData();
       });
     }
   }
@@ -436,28 +412,62 @@ class _MetroTileState extends State<MetroTile>
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.selectedCity != widget.selectedCity && isWeatherTile) {
-      _setWeatherData();
+      setState(() {
+        temperature = null;
+      });
+      _loadWeatherData();
     }
   }
 
-  void _setWeatherData() {
-    final hour = DateTime.now().hour;
+  Future<void> _loadWeatherData() async {
+    final requestId = ++_weatherRequestId;
+    final requestedCity = widget.selectedCity;
 
-    setState(() {
-      if (hour >= 6 && hour < 12) {
-        temperature = 16;
-        weatherType = 'sun';
-      } else if (hour >= 12 && hour < 18) {
-        temperature = 22;
+    try {
+      final forecast = await WeatherService.getWeatherForCity(requestedCity);
+
+      if (!mounted || requestId != _weatherRequestId) return;
+
+      setState(() {
+        temperature = forecast.currentTemperature?.round();
+        weatherType = _weatherTypeForCode(forecast.currentWeatherCode ?? 3);
+      });
+    } catch (error) {
+      debugPrint('BSL WEATHER TILE ERROR: $error');
+
+      if (!mounted || requestId != _weatherRequestId) return;
+
+      setState(() {
+        temperature = null;
         weatherType = 'cloud';
-      } else if (hour >= 18 && hour < 23) {
-        temperature = 14;
-        weatherType = 'rain';
-      } else {
-        temperature = 8;
-        weatherType = 'snow';
-      }
-    });
+      });
+    }
+  }
+
+  String _weatherTypeForCode(num weatherCode) {
+    if ([71, 73, 75, 77, 85, 86].contains(weatherCode)) return 'snow';
+    if ([
+      51,
+      53,
+      55,
+      56,
+      57,
+      61,
+      63,
+      65,
+      66,
+      67,
+      80,
+      81,
+      82,
+      95,
+      96,
+      99,
+    ].contains(weatherCode)) {
+      return 'rain';
+    }
+    if ([1, 2, 3, 45, 48].contains(weatherCode)) return 'cloud';
+    return 'sun';
   }
 
   @override
@@ -539,9 +549,8 @@ class _MetroTileState extends State<MetroTile>
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => ParkirajHomeScreen(
-  city: widget.selectedCity,
-),
+              builder: (context) =>
+                  ParkirajHomeScreen(city: widget.selectedCity),
             ),
           );
           return;
@@ -652,16 +661,11 @@ class _MetroTileState extends State<MetroTile>
                 _weatherIcon(),
                 color: Colors.white,
                 size: 38,
-                shadows: const [
-                  Shadow(
-                    color: Colors.white,
-                    blurRadius: 14,
-                  ),
-                ],
+                shadows: const [Shadow(color: Colors.white, blurRadius: 14)],
               ),
               const Spacer(),
               Text(
-                '$temperature°',
+                temperature == null ? '--°' : '$temperature°',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 34,
@@ -685,10 +689,7 @@ class _MetroTileState extends State<MetroTile>
           Text(
             '${_weatherText()} • Vrijeme',
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 11,
-            ),
+            style: const TextStyle(color: Colors.white70, fontSize: 11),
           ),
         ],
       ),
@@ -699,8 +700,7 @@ class _MetroTileState extends State<MetroTile>
     if (weatherType == 'rain') {
       return Stack(
         children: List.generate(9, (index) {
-          final offset =
-              ((_controller.value + index * 0.13) % 1.0) * 150 - 30;
+          final offset = ((_controller.value + index * 0.13) % 1.0) * 150 - 30;
 
           return Positioned(
             top: offset,
@@ -721,8 +721,7 @@ class _MetroTileState extends State<MetroTile>
     if (weatherType == 'snow') {
       return Stack(
         children: List.generate(11, (index) {
-          final offset =
-              ((_controller.value + index * 0.11) % 1.0) * 150 - 20;
+          final offset = ((_controller.value + index * 0.11) % 1.0) * 150 - 20;
 
           return Positioned(
             top: offset,

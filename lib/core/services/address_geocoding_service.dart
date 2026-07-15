@@ -17,28 +17,40 @@ class AddressGeocodingService {
     if (query.length < 2) return null;
 
     final normalizedCity = city?.trim() ?? '';
-    final scopedAddress = [
-      query,
-      if (normalizedCity.isNotEmpty) normalizedCity,
-      country,
-    ].join(', ');
+    final candidates = <String>{
+      [
+        query,
+        if (normalizedCity.isNotEmpty) normalizedCity,
+        country,
+      ].join(', '),
+      [query, country].join(', '),
+    };
+    PlatformException? lastError;
 
-    try {
-      final locations = await locationFromAddress(scopedAddress);
+    for (final address in candidates) {
+      try {
+        final locations = await locationFromAddress(address);
 
-      if (locations.isEmpty) return null;
+        if (locations.isEmpty) continue;
 
-      final location = locations.first;
+        final location = locations.first;
 
-      return AddressSearchResult(
-        label: query,
-        location: LatLng(location.latitude, location.longitude),
-      );
-    } on PlatformException catch (error) {
+        return AddressSearchResult(
+          label: query,
+          location: LatLng(location.latitude, location.longitude),
+        );
+      } on PlatformException catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError != null) {
       throw AddressGeocodingException(
-        error.message ?? 'Pretraga adrese trenutno nije dostupna.',
+        lastError.message ?? 'Pretraga adrese trenutno nije dostupna.',
       );
     }
+
+    return null;
   }
 }
 

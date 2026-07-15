@@ -1,59 +1,28 @@
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
+
 import '../services/weather_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class WeatherScreen extends StatefulWidget {
-  const WeatherScreen({super.key});
+  final String initialCity;
+
+  const WeatherScreen({super.key, required this.initialCity});
 
   @override
   State<WeatherScreen> createState() => _WeatherScreenState();
 }
 
 class _WeatherScreenState extends State<WeatherScreen> {
-  late Future<Map<String, dynamic>> weatherFuture;
+  late Future<WeatherForecast> weatherFuture;
 
   final TextEditingController cityController = TextEditingController();
-  String selectedCity = 'Pale';
 
   @override
   void initState() {
     super.initState();
-    weatherFuture = WeatherService.getWeather();
-    _loadSavedCity();
-  }
-
-  Future<void> _loadSavedCity() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedCity = prefs.getString('weather_selected_city') ?? 'Pale';
-
-    try {
-      final cityData = await WeatherService.searchCity(savedCity);
-
-      if (!mounted) return;
-
-      setState(() {
-        selectedCity = savedCity;
-        cityController.text = savedCity;
-        weatherFuture = WeatherService.getWeather(
-          latitude: cityData['latitude'],
-          longitude: cityData['longitude'],
-        );
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        selectedCity = savedCity;
-        cityController.text = savedCity;
-        weatherFuture = WeatherService.getWeather();
-      });
-    }
-  }
-
-  Future<void> _saveSelectedCity(String city) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('weather_selected_city', city);
+    cityController.text = widget.initialCity;
+    weatherFuture = WeatherService.getWeatherForCity(widget.initialCity);
   }
 
   @override
@@ -66,25 +35,25 @@ class _WeatherScreenState extends State<WeatherScreen> {
     final city = cityController.text.trim();
     if (city.isEmpty) return;
 
-    try {
-      final cityData = await WeatherService.searchCity(city);
-      final cityName = cityData['name'] ?? city;
+    final request = WeatherService.getWeatherForCity(city);
 
-      await _saveSelectedCity(cityName);
+    setState(() {
+      weatherFuture = request;
+    });
+
+    try {
+      final forecast = await request;
+
+      if (!mounted) return;
 
       setState(() {
-        selectedCity = cityName;
-        cityController.text = cityName;
-        weatherFuture = WeatherService.getWeather(
-          latitude: cityData['latitude'],
-          longitude: cityData['longitude'],
-        );
+        cityController.text = forecast.location.name;
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -94,8 +63,21 @@ class _WeatherScreenState extends State<WeatherScreen> {
     if (weatherCode == 3) return Icons.cloud;
     if ([45, 48].contains(weatherCode)) return Icons.foggy;
 
-    if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82]
-        .contains(weatherCode)) {
+    if ([
+      51,
+      53,
+      55,
+      56,
+      57,
+      61,
+      63,
+      65,
+      66,
+      67,
+      80,
+      81,
+      82,
+    ].contains(weatherCode)) {
       return Icons.thunderstorm;
     }
 
@@ -163,7 +145,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: FutureBuilder<Map<String, dynamic>>(
+      body: FutureBuilder<WeatherForecast>(
         future: weatherFuture,
         builder: (context, snapshot) {
           return Stack(
@@ -171,7 +153,9 @@ class _WeatherScreenState extends State<WeatherScreen> {
               Positioned(
                 top: -80,
                 right: -80,
-                child: _GlowCircle(color: Colors.cyanAccent.withValues(alpha: 0.28)),
+                child: _GlowCircle(
+                  color: Colors.cyanAccent.withValues(alpha: 0.28),
+                ),
               ),
               Positioned(
                 bottom: -110,
@@ -210,8 +194,8 @@ class _WeatherScreenState extends State<WeatherScreen> {
                     )
                   else
                     _WeatherContent(
-                      data: snapshot.data!,
-                      selectedCity: selectedCity,
+                      data: snapshot.data!.data,
+                      selectedCity: snapshot.data!.location.displayName,
                       dayName: dayName,
                       getWeatherIcon: getWeatherIcon,
                       getWeatherText: getWeatherText,
@@ -298,10 +282,7 @@ class _SearchWeatherPanel extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onSearch;
 
-  const _SearchWeatherPanel({
-    required this.controller,
-    required this.onSearch,
-  });
+  const _SearchWeatherPanel({required this.controller, required this.onSearch});
 
   @override
   Widget build(BuildContext context) {
@@ -320,7 +301,9 @@ class _SearchWeatherPanel extends StatelessWidget {
                 Colors.deepPurpleAccent.withValues(alpha: 0.16),
               ],
             ),
-            border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.35)),
+            border: Border.all(
+              color: Colors.cyanAccent.withValues(alpha: 0.35),
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.cyanAccent.withValues(alpha: 0.18),
@@ -397,7 +380,9 @@ class _CurrentWeatherCard extends StatelessWidget {
                 Colors.deepPurpleAccent.withValues(alpha: 0.25),
               ],
             ),
-            border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.45)),
+            border: Border.all(
+              color: Colors.cyanAccent.withValues(alpha: 0.45),
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.cyanAccent.withValues(alpha: 0.25),
@@ -538,10 +523,7 @@ class _DailyWeatherCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             date,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 13,
-            ),
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
           ),
           const SizedBox(height: 8),
           Row(
@@ -580,10 +562,7 @@ class _DailyWeatherCard extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 'Padavine: $rain mm',
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                ),
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
               ),
             ],
           ),

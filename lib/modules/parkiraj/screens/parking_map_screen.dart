@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:ui' as ui;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../core/models/address_search_result.dart';
+import '../../../core/models/bsl_city.dart';
 import '../../../core/services/address_geocoding_service.dart';
 import '../../../core/theme/bsl_design_system.dart';
 import '../../../core/widgets/bsl_progress_bar.dart';
@@ -16,10 +18,7 @@ import '../services/parking_service.dart';
 class ParkingMapScreen extends StatefulWidget {
   final String city;
 
-  const ParkingMapScreen({
-    super.key,
-    required this.city,
-  });
+  const ParkingMapScreen({super.key, required this.city});
 
   @override
   State<ParkingMapScreen> createState() => _ParkingMapScreenState();
@@ -35,12 +34,12 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
 
   GoogleMapController? _mapController;
   BitmapDescriptor? _greenParkingMarker;
-BitmapDescriptor? _orangeParkingMarker;
-BitmapDescriptor? _redParkingMarker;
+  BitmapDescriptor? _orangeParkingMarker;
+  BitmapDescriptor? _redParkingMarker;
 
-BitmapDescriptor? _selectedGreenParkingMarker;
-BitmapDescriptor? _selectedOrangeParkingMarker;
-BitmapDescriptor? _selectedRedParkingMarker;
+  BitmapDescriptor? _selectedGreenParkingMarker;
+  BitmapDescriptor? _selectedOrangeParkingMarker;
+  BitmapDescriptor? _selectedRedParkingMarker;
   StreamSubscription<List<ParkingLocation>>? _parkingsSubscription;
 
   String? _darkMapStyle;
@@ -49,15 +48,21 @@ BitmapDescriptor? _selectedRedParkingMarker;
 
   List<ParkingLocation> _parkings = [];
   ParkingLocation? _selectedParking;
+  late String _displayedCity;
 
-  static const CameraPosition _initialCameraPosition = CameraPosition(
-    target: LatLng(43.8563, 18.4131),
-    zoom: 14,
-  );
+  CameraPosition get _initialCameraPosition {
+    final city = BslCities.byName(widget.city);
+
+    return CameraPosition(
+      target: LatLng(city.latitude, city.longitude),
+      zoom: city.mapZoom,
+    );
+  }
 
   @override
   void initState() {
     super.initState();
+    _displayedCity = BslCities.byName(widget.city).name;
     _loadMapStyle();
     _loadParkingMarker();
     _listenParkings();
@@ -74,197 +79,156 @@ BitmapDescriptor? _selectedRedParkingMarker;
       _darkMapStyle = style;
     });
   }
-Future<void> _loadParkingMarker() async {
-  final results = await Future.wait([
-  _createParkingMarker(
-    statusColor: const Color(0xFF22C55E),
-    width: 42,
-    height: 46,
-  ),
-  _createParkingMarker(
-    statusColor: const Color(0xFFF59E0B),
-    width: 42,
-    height: 46,
-  ),
-  _createParkingMarker(
-    statusColor: const Color(0xFFEF4444),
-    width: 42,
-    height: 46,
-  ),
-  _createParkingMarker(
-    statusColor: const Color(0xFF22C55E),
-    width: 42,
-    height: 46,
-    selected: true,
-  ),
-  _createParkingMarker(
-    statusColor: const Color(0xFFF59E0B),
-    width: 42,
-    height: 46,
-    selected: true,
-  ),
-  _createParkingMarker(
-    statusColor: const Color(0xFFEF4444),
-    width: 42,
-    height: 46,
-    selected: true,
-  ),
-]);
 
-  if (!mounted) return;
-
-  setState(() {
-    _greenParkingMarker = results[0];
-    _orangeParkingMarker = results[1];
-    _redParkingMarker = results[2];
-
-    _selectedGreenParkingMarker = results[3];
-    _selectedOrangeParkingMarker = results[4];
-    _selectedRedParkingMarker = results[5];
-  });
-}
-
-Future<BitmapDescriptor> _createParkingMarker({
-  required Color statusColor,
-  required int width,
-  required int height,
-  bool selected = false,
-}) async {
-  final assetData = await rootBundle.load(
-    'assets/markers/bsl_parking_marker.png',
-  );
-
-  final Uint8List assetBytes = assetData.buffer.asUint8List();
-
-  final codec = await ui.instantiateImageCodec(
-    assetBytes,
-    targetWidth: width,
-    targetHeight: height,
-  );
-
-  final frame = await codec.getNextFrame();
-  final sourceImage = frame.image;
-
-  final recorder = ui.PictureRecorder();
-  final canvas = Canvas(recorder);
-
-  canvas.drawImage(
-    sourceImage,
-    Offset.zero,
-    Paint()..isAntiAlias = true,
-  );
-if (selected) {
-  final glowPaint = Paint()
-    ..colorFilter = ColorFilter.mode(
-      BslColors.cyan.withValues(alpha: 0.70),
-      BlendMode.srcATop,
-    )
-    ..maskFilter = const MaskFilter.blur(
-      BlurStyle.normal,
-      7,
-    )
-    ..isAntiAlias = true;
-
-  canvas.drawImage(
-    sourceImage,
-    Offset.zero,
-    glowPaint,
-  );
-
- if (selected) {
-  canvas.drawImage(
-    sourceImage,
-    Offset.zero,
-    Paint()
-      ..colorFilter = ColorFilter.mode(
-        BslColors.cyan.withValues(alpha: 0.70),
-        BlendMode.srcATop,
-      )
-      ..maskFilter = const MaskFilter.blur(
-        BlurStyle.normal,
-        7,
-      )
-      ..isAntiAlias = true,
-  );
-}
-
-canvas.drawImage(
-  sourceImage,
-  Offset.zero,
-  Paint()..isAntiAlias = true,
-);
-}
-  final statusCenter = Offset(
-    width * 0.79,
-    height * 0.19,
-  );
-
-  final statusRadius = width * 0.075;
-
-  // Vanjski glow statusa.
-  canvas.drawCircle(
-    statusCenter,
-    statusRadius * 1.75,
-    Paint()
-      ..color = statusColor.withValues(alpha: selected ? 0.45 : 0.30)
-      ..maskFilter = const MaskFilter.blur(
-        BlurStyle.normal,
-        8,
+  Future<void> _loadParkingMarker() async {
+    final results = await Future.wait([
+      _createParkingMarker(
+        statusColor: const Color(0xFF22C55E),
+        width: 42,
+        height: 46,
       ),
-  );
+      _createParkingMarker(
+        statusColor: const Color(0xFFF59E0B),
+        width: 42,
+        height: 46,
+      ),
+      _createParkingMarker(
+        statusColor: const Color(0xFFEF4444),
+        width: 42,
+        height: 46,
+      ),
+      _createParkingMarker(
+        statusColor: const Color(0xFF22C55E),
+        width: 42,
+        height: 46,
+        selected: true,
+      ),
+      _createParkingMarker(
+        statusColor: const Color(0xFFF59E0B),
+        width: 42,
+        height: 46,
+        selected: true,
+      ),
+      _createParkingMarker(
+        statusColor: const Color(0xFFEF4444),
+        width: 42,
+        height: 46,
+        selected: true,
+      ),
+    ]);
 
-  // Bijeli vanjski prsten.
-  canvas.drawCircle(
-    statusCenter,
-    statusRadius * 1.25,
-    Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = true,
-  );
+    if (!mounted) return;
 
-  // Obojeni prsten.
-  canvas.drawCircle(
-    statusCenter,
-    statusRadius,
-    Paint()
-      ..color = statusColor
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = true,
-  );
+    setState(() {
+      _greenParkingMarker = results[0];
+      _orangeParkingMarker = results[1];
+      _redParkingMarker = results[2];
 
-  // Svjetliji centar za blagi 3D efekat.
-  canvas.drawCircle(
-    Offset(
-      statusCenter.dx - statusRadius * 0.22,
-      statusCenter.dy - statusRadius * 0.22,
-    ),
-    statusRadius * 0.45,
-    Paint()
-      ..color = Colors.white.withValues(alpha: 0.38)
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = true,
-  );
+      _selectedGreenParkingMarker = results[3];
+      _selectedOrangeParkingMarker = results[4];
+      _selectedRedParkingMarker = results[5];
+    });
+  }
 
-  final picture = recorder.endRecording();
+  Future<BitmapDescriptor> _createParkingMarker({
+    required Color statusColor,
+    required int width,
+    required int height,
+    bool selected = false,
+  }) async {
+    final assetData = await rootBundle.load(
+      'assets/markers/bsl_parking_marker.png',
+    );
 
-  final outputImage = await picture.toImage(
-    width,
-    height,
-  );
+    final Uint8List assetBytes = assetData.buffer.asUint8List();
 
-  final outputData = await outputImage.toByteData(
-  format: ui.ImageByteFormat.png,
-);
+    final codec = await ui.instantiateImageCodec(
+      assetBytes,
+      targetWidth: width,
+      targetHeight: height,
+    );
 
-if (outputData == null) {
-  throw StateError('Nije moguće kreirati parking marker.');
-}
+    final frame = await codec.getNextFrame();
+    final sourceImage = frame.image;
 
-return BitmapDescriptor.bytes(
-  outputData.buffer.asUint8List(),
-);
-}
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    canvas.drawImage(sourceImage, Offset.zero, Paint()..isAntiAlias = true);
+    if (selected) {
+      final glowPaint = Paint()
+        ..colorFilter = ColorFilter.mode(
+          BslColors.cyan.withValues(alpha: 0.70),
+          BlendMode.srcATop,
+        )
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7)
+        ..isAntiAlias = true;
+
+      canvas.drawImage(sourceImage, Offset.zero, glowPaint);
+
+      canvas.drawImage(sourceImage, Offset.zero, Paint()..isAntiAlias = true);
+    }
+    final statusCenter = Offset(width * 0.79, height * 0.19);
+
+    final statusRadius = width * 0.075;
+
+    // Vanjski glow statusa.
+    canvas.drawCircle(
+      statusCenter,
+      statusRadius * 1.75,
+      Paint()
+        ..color = statusColor.withValues(alpha: selected ? 0.45 : 0.30)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+    );
+
+    // Bijeli vanjski prsten.
+    canvas.drawCircle(
+      statusCenter,
+      statusRadius * 1.25,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill
+        ..isAntiAlias = true,
+    );
+
+    // Obojeni prsten.
+    canvas.drawCircle(
+      statusCenter,
+      statusRadius,
+      Paint()
+        ..color = statusColor
+        ..style = PaintingStyle.fill
+        ..isAntiAlias = true,
+    );
+
+    // Svjetliji centar za blagi 3D efekat.
+    canvas.drawCircle(
+      Offset(
+        statusCenter.dx - statusRadius * 0.22,
+        statusCenter.dy - statusRadius * 0.22,
+      ),
+      statusRadius * 0.45,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.38)
+        ..style = PaintingStyle.fill
+        ..isAntiAlias = true,
+    );
+
+    final picture = recorder.endRecording();
+
+    final outputImage = await picture.toImage(width, height);
+
+    final outputData = await outputImage.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
+
+    if (outputData == null) {
+      throw StateError('Nije moguće kreirati parking marker.');
+    }
+
+    return BitmapDescriptor.bytes(outputData.buffer.asUint8List());
+  }
+
   void _listenParkings() {
     _parkingsSubscription?.cancel();
 
@@ -313,14 +277,33 @@ return BitmapDescriptor.bytes(
 
     if (rawQuery.length < 2) return;
 
-    final query = rawQuery.toLowerCase();
+    final query = BslCities.normalize(rawQuery);
 
     debugPrint('BSL SEARCH START: $rawQuery');
 
+    final searchedCity = BslCities.findExact(rawQuery);
+
+    if (searchedCity != null) {
+      await _animateTo(
+        target: LatLng(searchedCity.latitude, searchedCity.longitude),
+        zoom: searchedCity.mapZoom,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _displayedCity = searchedCity.name;
+        _selectedParking = null;
+      });
+
+      _searchFocusNode.unfocus();
+      return;
+    }
+
     final parkingMatches = _parkings.where((parking) {
-      final name = parking.name.toLowerCase();
-      final address = parking.address.toLowerCase();
-      final city = parking.city.toLowerCase();
+      final name = BslCities.normalize(parking.name);
+      final address = BslCities.normalize(parking.address);
+      final city = BslCities.normalize(parking.city);
 
       return name.contains(query) ||
           address.contains(query) ||
@@ -332,14 +315,15 @@ return BitmapDescriptor.bytes(
 
       debugPrint('BSL SEARCH PARKING MATCH: ${parking.name}');
 
-      await _animateTo(
-        target: parking.position,
-        zoom: 17,
-      );
+      await _animateTo(target: parking.position, zoom: 17);
 
       if (!mounted) return;
 
       setState(() {
+        if (parking.city.trim().isNotEmpty) {
+          _displayedCity =
+              BslCities.findExact(parking.city)?.name ?? parking.city.trim();
+        }
         _selectedParking = parking;
       });
 
@@ -349,12 +333,13 @@ return BitmapDescriptor.bytes(
 
     debugPrint('BSL SEARCH ADDRESS QUERY: $rawQuery');
 
+    final mentionedCity = BslCities.findMentionedIn(rawQuery);
     final AddressSearchResult? address;
 
     try {
       address = await _addressGeocodingService.searchAddress(
         input: rawQuery,
-        city: widget.city,
+        city: mentionedCity?.name ?? _displayedCity,
       );
     } on AddressGeocodingException catch (error) {
       if (!mounted) return;
@@ -390,14 +375,14 @@ return BitmapDescriptor.bytes(
       'BSL SEARCH ADDRESS MATCH: ${address.label} ${address.location}',
     );
 
-    await _animateTo(
-      target: address.location,
-      zoom: 16,
-    );
+    await _animateTo(target: address.location, zoom: 16);
 
     if (!mounted) return;
 
     setState(() {
+      if (mentionedCity != null) {
+        _displayedCity = mentionedCity.name;
+      }
       _selectedParking = null;
     });
 
@@ -417,188 +402,191 @@ return BitmapDescriptor.bytes(
 
     await controller.animateCamera(
       CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: target,
-          zoom: zoom,
-        ),
+        CameraPosition(target: target, zoom: zoom),
       ),
     );
   }
 
   Set<Marker> _buildParkingMarkers() {
-  return _parkings.map((parking) {
-    final occupancyPercent = parking.totalSpots <= 0
-        ? 0.0
-        : 1 - (parking.freeSpots / parking.totalSpots);
+    return _parkings.map((parking) {
+      final occupancyPercent = parking.totalSpots <= 0
+          ? 0.0
+          : 1 - (parking.freeSpots / parking.totalSpots);
 
-    final isSelected = _selectedParking?.id == parking.id;
+      final isSelected = _selectedParking?.id == parking.id;
 
-    final markerIcon = _getParkingMarkerIcon(
-      occupancyPercent: occupancyPercent,
-      isSelected: isSelected,
-    );
+      final markerIcon = _getParkingMarkerIcon(
+        occupancyPercent: occupancyPercent,
+        isSelected: isSelected,
+      );
 
-    return Marker(
-      markerId: MarkerId(parking.id),
-      position: parking.position,
-      icon: markerIcon,
-      anchor: const Offset(0.5, 1.0),
-      infoWindow: InfoWindow(
-        title: parking.name,
-        snippet: '${parking.freeSpots}/${parking.totalSpots} slobodno',
-      ),
-      onTap: () async {
-        await _animateTo(
-          target: parking.position,
-          zoom: 17,
-        );
+      return Marker(
+        markerId: MarkerId(parking.id),
+        position: parking.position,
+        icon: markerIcon,
+        anchor: const Offset(0.5, 1.0),
+        infoWindow: InfoWindow(
+          title: parking.name,
+          snippet: '${parking.freeSpots}/${parking.totalSpots} slobodno',
+        ),
+        onTap: () async {
+          await _animateTo(target: parking.position, zoom: 17);
 
-        if (!mounted) return;
+          if (!mounted) return;
 
-        setState(() {
-          _selectedParking = parking;
-        });
-      },
-    );
-  }).toSet();
-}
-BitmapDescriptor _getParkingMarkerIcon({
-  required double occupancyPercent,
-  required bool isSelected,
-}) {
-  if (occupancyPercent >= 0.85) {
-    return isSelected
-        ? _selectedRedParkingMarker ?? BitmapDescriptor.defaultMarker
-        : _redParkingMarker ?? BitmapDescriptor.defaultMarker;
+          setState(() {
+            if (parking.city.trim().isNotEmpty) {
+              _displayedCity =
+                  BslCities.findExact(parking.city)?.name ??
+                  parking.city.trim();
+            }
+            _selectedParking = parking;
+          });
+        },
+      );
+    }).toSet();
   }
 
-  if (occupancyPercent >= 0.60) {
+  BitmapDescriptor _getParkingMarkerIcon({
+    required double occupancyPercent,
+    required bool isSelected,
+  }) {
+    if (occupancyPercent >= 0.85) {
+      return isSelected
+          ? _selectedRedParkingMarker ?? BitmapDescriptor.defaultMarker
+          : _redParkingMarker ?? BitmapDescriptor.defaultMarker;
+    }
+
+    if (occupancyPercent >= 0.60) {
+      return isSelected
+          ? _selectedOrangeParkingMarker ?? BitmapDescriptor.defaultMarker
+          : _orangeParkingMarker ?? BitmapDescriptor.defaultMarker;
+    }
+
     return isSelected
-        ? _selectedOrangeParkingMarker ?? BitmapDescriptor.defaultMarker
-        : _orangeParkingMarker ?? BitmapDescriptor.defaultMarker;
+        ? _selectedGreenParkingMarker ?? BitmapDescriptor.defaultMarker
+        : _greenParkingMarker ?? BitmapDescriptor.defaultMarker;
   }
 
-  return isSelected
-      ? _selectedGreenParkingMarker ?? BitmapDescriptor.defaultMarker
-      : _greenParkingMarker ?? BitmapDescriptor.defaultMarker;
-}
-void _showParkingDetails(ParkingLocation parking) {
-  showModalBottomSheet(
-    context: context,
-    backgroundColor: Colors.transparent,
-    isScrollControlled: false,
-    builder: (context) {
-      return SafeArea(
-        child: Container(
-  constraints: BoxConstraints(
-    maxHeight: MediaQuery.of(context).size.height * 0.45,
-  ),
-  margin: const EdgeInsets.all(16),
-  padding: const EdgeInsets.all(20),
-          decoration: BslDecorations.bottomPanel(),
-          child: Column(
-  mainAxisSize: MainAxisSize.min,
-  crossAxisAlignment: CrossAxisAlignment.start,
-  children: [
-    Center(
-      child: Container(
-        width: 42,
-        height: 4,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.25),
-          borderRadius: BorderRadius.circular(99),
-        ),
-      ),
-    ),
-    const SizedBox(height: 18),
+  void _showParkingDetails(ParkingLocation parking) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: false,
+      builder: (context) {
+        return SafeArea(
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.45,
+            ),
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
+            decoration: BslDecorations.bottomPanel(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
 
-    Row(
-      children: [
-        const Icon(
-          Icons.local_parking_rounded,
-          color: BslColors.cyan,
-          size: 30,
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            parking.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 21,
-              fontWeight: FontWeight.w900,
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.local_parking_rounded,
+                      color: BslColors.cyan,
+                      size: 30,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        parking.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 21,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 8),
+
+                Text(
+                  parking.address.isNotEmpty ? parking.address : parking.city,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.68),
+                    fontSize: 14,
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: _DetailMiniCard(
+                        icon: Icons.event_available_rounded,
+                        title: 'Slobodno',
+                        value: '${parking.freeSpots}',
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _DetailMiniCard(
+                        icon: Icons.local_parking_rounded,
+                        title: 'Ukupno',
+                        value: '${parking.totalSpots}',
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 10),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: _DetailMiniCard(
+                        icon: Icons.payments_rounded,
+                        title: 'Cijena',
+                        value:
+                            '${parking.pricePerHour.toStringAsFixed(2)} KM/h',
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _DetailMiniCard(
+                        icon: Icons.schedule_rounded,
+                        title: 'Vrijeme',
+                        value: parking.workingHours.isNotEmpty
+                            ? parking.workingHours
+                            : 'Nije uneseno',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-        ),
-      ],
-    ),
+        );
+      },
+    );
+  }
 
-    const SizedBox(height: 8),
-
-    Text(
-      parking.address.isNotEmpty ? parking.address : parking.city,
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        color: Colors.white.withValues(alpha: 0.68),
-        fontSize: 14,
-      ),
-    ),
-
-    const SizedBox(height: 18),
-
-    Row(
-      children: [
-        Expanded(
-          child: _DetailMiniCard(
-            icon: Icons.event_available_rounded,
-            title: 'Slobodno',
-            value: '${parking.freeSpots}',
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _DetailMiniCard(
-            icon: Icons.local_parking_rounded,
-            title: 'Ukupno',
-            value: '${parking.totalSpots}',
-          ),
-        ),
-      ],
-    ),
-
-    const SizedBox(height: 10),
-
-    Row(
-      children: [
-        Expanded(
-          child: _DetailMiniCard(
-            icon: Icons.payments_rounded,
-            title: 'Cijena',
-            value: '${parking.pricePerHour.toStringAsFixed(2)} KM/h',
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _DetailMiniCard(
-            icon: Icons.schedule_rounded,
-            title: 'Vrijeme',
-            value: parking.workingHours.isNotEmpty
-                ? parking.workingHours
-                : 'Nije uneseno',
-          ),
-        ),
-      ],
-    ),
-  ],
-),
-        ),
-      );
-    },
-  );
-}
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
@@ -620,23 +608,13 @@ void _showParkingDetails(ParkingLocation parking) {
     if (_isLoading) {
       return const Scaffold(
         backgroundColor: Color(0xFF070B18),
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    if (_parkings.isEmpty) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF070B18),
-        body: Center(
-          child: Text(
-            'Nema parkinga u bazi',
-            style: TextStyle(color: Colors.white),
-          ),
-        ),
-      );
-    }
+    final displayedParkingCount = _parkings
+        .where((parking) => BslCities.same(parking.city, _displayedCity))
+        .length;
 
     return Scaffold(
       backgroundColor: const Color(0xFF070B18),
@@ -661,8 +639,8 @@ void _showParkingDetails(ParkingLocation parking) {
             right: 0,
             child: BslModuleTopBar(
               title: 'Parkiraj.ba',
-              subtitle: widget.city,
-              badge: '${_parkings.length} parkinga',
+              subtitle: _displayedCity,
+              badge: '$displayedParkingCount parkinga',
               searchHint: 'Pretraži parking ili adresu...',
               searchController: _searchController,
               searchFocusNode: _searchFocusNode,
@@ -670,32 +648,32 @@ void _showParkingDetails(ParkingLocation parking) {
             ),
           ),
           AnimatedPositioned(
-  duration: const Duration(milliseconds: 250),
-  curve: Curves.easeOutCubic,
-  left: 0,
-  right: 0,
-  bottom: _selectedParking == null ? -220 : 0,
-  child: AnimatedOpacity(
-    duration: const Duration(milliseconds: 220),
-    opacity: _selectedParking == null ? 0 : 1,
-    child: IgnorePointer(
-      ignoring: _selectedParking == null,
-      child: _selectedParking == null
-          ? const SizedBox.shrink()
-          : _ParkingBottomCard(
-              parking: _selectedParking!,
-              onClose: () {
-                setState(() {
-                  _selectedParking = null;
-                });
-              },
-              onDetails: () {
-                _showParkingDetails(_selectedParking!);
-              },
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            left: 0,
+            right: 0,
+            bottom: _selectedParking == null ? -220 : 0,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 220),
+              opacity: _selectedParking == null ? 0 : 1,
+              child: IgnorePointer(
+                ignoring: _selectedParking == null,
+                child: _selectedParking == null
+                    ? const SizedBox.shrink()
+                    : _ParkingBottomCard(
+                        parking: _selectedParking!,
+                        onClose: () {
+                          setState(() {
+                            _selectedParking = null;
+                          });
+                        },
+                        onDetails: () {
+                          _showParkingDetails(_selectedParking!);
+                        },
+                      ),
+              ),
             ),
-    ),
-  ),
-),
+          ),
         ],
       ),
     );
@@ -707,11 +685,11 @@ class _ParkingBottomCard extends StatelessWidget {
   final VoidCallback onClose;
   final VoidCallback onDetails;
 
- const _ParkingBottomCard({
-  required this.parking,
-  required this.onClose,
-  required this.onDetails,
-});
+  const _ParkingBottomCard({
+    required this.parking,
+    required this.onClose,
+    required this.onDetails,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -720,8 +698,8 @@ class _ParkingBottomCard extends StatelessWidget {
         : 1 - (parking.freeSpots / parking.totalSpots);
 
     return Container(
-  padding: const EdgeInsets.all(18),
-  decoration: BslDecorations.bottomDock(),
+      padding: const EdgeInsets.all(18),
+      decoration: BslDecorations.bottomDock(),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -748,10 +726,7 @@ class _ParkingBottomCard extends StatelessWidget {
               ),
               IconButton(
                 onPressed: onClose,
-                icon: const Icon(
-                  Icons.close_rounded,
-                  color: Colors.white70,
-                ),
+                icon: const Icon(Icons.close_rounded, color: Colors.white70),
               ),
             ],
           ),
@@ -767,14 +742,14 @@ class _ParkingBottomCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-BslProgressBar(
-  value: occupancyPercent,
-  label: 'Popunjenost',
-  totalSegments: parking.totalSpots,
-  filledSegments: parking.totalSpots - parking.freeSpots,
-  subtitle:
-      '${parking.freeSpots} slobodnih od ${parking.totalSpots} mjesta',
-),
+          BslProgressBar(
+            value: occupancyPercent,
+            label: 'Popunjenost',
+            totalSegments: parking.totalSpots,
+            filledSegments: parking.totalSpots - parking.freeSpots,
+            subtitle:
+                '${parking.freeSpots} slobodnih od ${parking.totalSpots} mjesta',
+          ),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -826,7 +801,6 @@ BslProgressBar(
                   label: 'Plati',
                   onTap: () {},
                 ),
-                
               ),
             ],
           ),
@@ -840,10 +814,7 @@ class _InfoPill extends StatelessWidget {
   final IconData icon;
   final String label;
 
-  const _InfoPill({
-    required this.icon,
-    required this.label,
-  });
+  const _InfoPill({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -856,11 +827,7 @@ class _InfoPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            color: BslColors.cyan,
-            size: 16,
-          ),
+          Icon(icon, color: BslColors.cyan, size: 16),
           const SizedBox(width: 6),
           Flexible(
             child: Text(
@@ -919,11 +886,7 @@ class _ParkingActionButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                color: textColor,
-                size: 18,
-              ),
+              Icon(icon, color: textColor, size: 18),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
@@ -943,6 +906,7 @@ class _ParkingActionButton extends StatelessWidget {
     );
   }
 }
+
 class _DetailMiniCard extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -962,17 +926,11 @@ class _DetailMiniCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.10),
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
       ),
       child: Row(
         children: [
-          Icon(
-            icon,
-            color: BslColors.cyan,
-            size: 19,
-          ),
+          Icon(icon, color: BslColors.cyan, size: 19),
           const SizedBox(width: 9),
           Expanded(
             child: Column(
