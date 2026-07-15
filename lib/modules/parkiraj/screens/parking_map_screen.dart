@@ -4,9 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import '../../../core/widgets/bsl_progress_bar.dart';
-import '../../../core/services/google_places_service.dart';
+
+import '../../../core/models/address_search_result.dart';
+import '../../../core/services/address_geocoding_service.dart';
 import '../../../core/theme/bsl_design_system.dart';
+import '../../../core/widgets/bsl_progress_bar.dart';
 import '../../../core/widgets/bsl_module_top_bar.dart';
 import '../models/parking_location.dart';
 import '../services/parking_service.dart';
@@ -28,7 +30,8 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
   final FocusNode _searchFocusNode = FocusNode();
 
   final ParkingService _parkingService = ParkingService();
-  final GooglePlacesService _placesService = GooglePlacesService();
+  final AddressGeocodingService _addressGeocodingService =
+      const AddressGeocodingService();
 
   GoogleMapController? _mapController;
   BitmapDescriptor? _greenParkingMarker;
@@ -305,7 +308,7 @@ return BitmapDescriptor.bytes(
     super.dispose();
   }
 
-  Future<void> _searchParkingOrPlace(String value) async {
+  Future<void> _searchParkingOrAddress(String value) async {
     final rawQuery = value.trim();
 
     if (rawQuery.length < 2) return;
@@ -344,17 +347,33 @@ return BitmapDescriptor.bytes(
       return;
     }
 
-    debugPrint('BSL SEARCH PLACES QUERY: $rawQuery');
+    debugPrint('BSL SEARCH ADDRESS QUERY: $rawQuery');
 
-    final places = await _placesService.searchPlaces(
-      input: rawQuery,
-      language: 'bs',
-      country: 'ba',
-    );
+    final AddressSearchResult? address;
+
+    try {
+      address = await _addressGeocodingService.searchAddress(
+        input: rawQuery,
+        city: widget.city,
+      );
+    } on AddressGeocodingException catch (error) {
+      if (!mounted) return;
+
+      debugPrint('BSL SEARCH ADDRESS ERROR: $error');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pretraga adrese trenutno nije dostupna.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      return;
+    }
 
     if (!mounted) return;
 
-    if (places.isEmpty) {
+    if (address == null) {
       debugPrint('BSL SEARCH NO RESULTS: $rawQuery');
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -367,12 +386,12 @@ return BitmapDescriptor.bytes(
       return;
     }
 
-    final place = places.first;
-
-    debugPrint('BSL SEARCH PLACE MATCH: ${place.title} ${place.location}');
+    debugPrint(
+      'BSL SEARCH ADDRESS MATCH: ${address.label} ${address.location}',
+    );
 
     await _animateTo(
-      target: place.location,
+      target: address.location,
       zoom: 16,
     );
 
@@ -647,7 +666,7 @@ void _showParkingDetails(ParkingLocation parking) {
               searchHint: 'Pretraži parking ili adresu...',
               searchController: _searchController,
               searchFocusNode: _searchFocusNode,
-              onSearchSubmitted: _searchParkingOrPlace,
+              onSearchSubmitted: _searchParkingOrAddress,
             ),
           ),
           AnimatedPositioned(

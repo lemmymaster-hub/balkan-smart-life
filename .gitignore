@@ -4,6 +4,14 @@
 *.pyc
 *.swp
 .DS_Store
+.env
+.env.*
+!.env.example
+**/*.p12
+**/*.pem
+**/firebase-adminsdk*.json
+**/service-account*.json
+**/*serviceAccount*.json
 .atom/
 .build/
 .buildlog/

@@ -1,91 +1,90 @@
 # BSL – Balkan Smart Life
 
-BSL (Balkan Smart Life) is a next-generation smart city and citizen services platform designed for the Balkans. The project aims to integrate everyday urban services, mobility, safety, emergency communication, and community tools into a single mobile ecosystem.
+BSL (Balkan Smart Life) je modularna Smart City platforma koja objedinjuje
+svakodnevne gradske i lokalne usluge u jednoj Flutter aplikaciji prilagođenoj
+gradovima i opštinama u regionu.
 
-## Vision
+## Trenutne funkcionalnosti
 
-BSL is being developed as a modular platform that connects citizens, local governments, emergency services, businesses, and community organizations through a unified mobile application.
+### Korisnički račun
 
-The long-term goal is to create a regional smart-city ecosystem adapted to the specific needs of Balkan countries.
+- Firebase registracija i prijava
+- trajna korisnička sesija
+- korisnički profil i odjava
 
----
+### Vremenska prognoza
 
-## Current Features
+- trenutno vrijeme i sedmodnevna prognoza
+- izbor i pamćenje grada
+- Open-Meteo integracija
 
-### User Management
+### Parkiraj.ba
 
-* Firebase Authentication
-* User Registration
-* Secure Login
-* Persistent Sessions
-* User Profile Management
+- prikaz aktivnih parkinga iz Cloud Firestore baze
+- Google mapa sa prilagođenim BSL markerima
+- stanje zauzetosti i detalji parkinga
+- pretraga parkinga i adresa
+- pomjeranje i fokusiranje mape na rezultat
 
-### Weather Module
+### Modularna struktura
 
-* Real-time Weather Information
-* 7-Day Forecast
-* Location Search
-* Open-Meteo Integration
+- odvojeni moduli, modeli i servisni slojevi
+- zajednički BSL dizajn sistem
+- arhitektura pripremljena za dodavanje novih Smart City usluga
 
-### Parkiraj.ba Integration
+BSL Mesh je zasebna aplikacija za komunikaciju i pomoć u kriznim situacijama i
+nije dio ovog repozitorija.
 
-* Parking Services Module
-* Parking Location Architecture
-* Google Maps Migration (In Progress)
+## Tehnologije
 
-### Modular Architecture
+- Flutter i Dart
+- Firebase Authentication
+- Cloud Firestore
+- Google Maps SDK for Android
+- sistemski Android/iOS geocoder
+- Open-Meteo API
+- Git i GitHub
 
-* Scalable Module Structure
-* Independent Service Layers
-* Expandable Feature System
+## Lokalno pokretanje
 
----
+1. Instaliraj Flutter verziju koja podržava Dart `^3.12.0`.
+2. Pokreni `flutter pub get`.
+3. U datoteku `android/local.properties` dodaj lokalni Google Maps ključ:
 
-## Planned Modules
+   ```properties
+   MAPS_API_KEY=ovdje_unesi_svoj_kljuc
+   ```
 
-* BSL Mesh
-* Smart Parking
-* Public Transport
-* Taxi Services
-* Tourism Information
-* Local News
-* Digital Wallet
-* Disaster Alerts
-* Emergency Notifications
-* Citizen Reporting
-* Rewards & Loyalty System
-* AI Assistant
+4. Pokreni aplikaciju pomoću `flutter run`.
 
----
+`android/local.properties` je ignorisan u Gitu. Ne upisuj stvarni ključ u
+`AndroidManifest.xml`, Dart kod, README ili drugu praćenu datoteku.
 
-## Technology Stack
+## Google Maps konfiguracija
 
-* Flutter
-* Dart
-* Firebase Authentication
-* Cloud Firestore
-* Google Maps
-* Open-Meteo API
-* Git & GitHub
+Android Maps ključ treba imati sljedeća ograničenja:
 
----
+- application restriction: **Android apps**
+- package name: `ba.balkansmartlife.app`
+- SHA-1 certifikata kojim se potpisuje odgovarajući build
+- API restriction: samo **Maps SDK for Android**
 
-## Development Status
+Debug i produkcijski build ne trebaju dijeliti isti ključ. Za release build
+koristi zaseban ključ ograničen release certifikatom.
 
-Active Development
+Pretraga adresa koristi sistemski geocoder na Androidu i iOS-u, pa aplikaciji
+nije potreban javno ugrađen Google Places REST ključ.
 
-Current Focus:
+## Razvoj
 
-* Parkiraj.ba migration
-* Google Maps integration
-* Disaster Alert architecture
-* BSL Mesh ecosystem integration
+Aktivna razvojna grana i izvor istine je `main`. Nove funkcionalnosti trebaju
+se razvijati u kratkotrajnim granama i vraćati u `main` nakon provjere.
 
----
+Planirani moduli uključuju gradski prevoz, taxi, turističke informacije,
+lokalne vijesti, digitalni novčanik, prijavu problema, nagrade i AI asistenta.
 
-## Author
+## Autor
 
 Mile Vujasin
 
-GitHub:
-https://github.com/lemmymaster-hub
+[GitHub profil](https://github.com/lemmymaster-hub)
