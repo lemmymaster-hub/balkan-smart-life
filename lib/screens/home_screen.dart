@@ -5,8 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/context/bsl_location_context.dart';
 import '../core/context/city_context.dart';
-import '../core/startup/bsl_startup_service.dart';
 import '../modules/parkiraj/screens/parkiraj_home_screen.dart';
 import '../services/weather_service.dart';
 import '../widgets/animated_logo.dart';
@@ -20,26 +20,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  final BslStartupService _startupService = BslStartupService();
-  Future<void> _initializeBsl() async {
-    final result = await _startupService.initialize();
-
-    if (!mounted) return;
-
-    final location = result.location;
-
-    if (location != null) {
-      debugPrint(
-        'BSL STARTUP LOCATION: '
-        '${location.latitude}, ${location.longitude}, '
-        '${location.city}, ${location.municipality}, ${location.country}',
-      );
-    } else {
-      debugPrint('BSL STARTUP LOCATION ERROR: ${result.locationError}');
-    }
-  }
-
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final List<MenuItemData> menuItems = [
     MenuItemData('Parkiraj.ba', Icons.local_parking),
     MenuItemData('Gradski prevoz', Icons.tram),
@@ -53,7 +34,35 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeBsl();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<BslLocationContext>().initialize();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      context.read<BslLocationContext>().refresh();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Future<void> _handleLocationAction() async {
+    final locationContext = context.read<BslLocationContext>();
+
+    if (locationContext.shouldOpenSettings) {
+      final openedSettings = await locationContext.openRelevantSettings();
+      if (openedSettings) return;
+    }
+
+    await locationContext.refresh();
   }
 
   Future<void> _openWeatherScreen() async {
@@ -225,6 +234,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final cityContext = context.watch<CityContext>();
+    final locationContext = context.watch<BslLocationContext>();
     final selectedCity = cityContext.selectedCity;
     final cities = cityContext.cities;
     final dropdownValue = cities.contains(selectedCity) ? selectedCity : 'Pale';
@@ -322,6 +332,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       }
                     },
                   ),
+                  const SizedBox(height: 9),
+                  _HomeLocationStatus(
+                    locationContext: locationContext,
+                    onTap: _handleLocationAction,
+                  ),
                 ],
               ),
             ),
@@ -349,6 +364,76 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeLocationStatus extends StatelessWidget {
+  final BslLocationContext locationContext;
+  final VoidCallback onTap;
+
+  const _HomeLocationStatus({
+    required this.locationContext,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final status = locationContext.status;
+    final isAvailable = locationContext.hasLocation;
+    final needsSettings = locationContext.shouldOpenSettings;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+          child: Row(
+            children: [
+              if (locationContext.isLoading)
+                const SizedBox(
+                  width: 17,
+                  height: 17,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.cyanAccent,
+                  ),
+                )
+              else
+                Icon(
+                  isAvailable
+                      ? Icons.my_location_rounded
+                      : Icons.location_disabled_rounded,
+                  size: 18,
+                  color: isAvailable ? Colors.cyanAccent : Colors.orangeAccent,
+                ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  locationContext.statusMessage,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Icon(
+                needsSettings
+                    ? Icons.settings_rounded
+                    : status == BslLocationStatus.available
+                    ? Icons.refresh_rounded
+                    : Icons.chevron_right_rounded,
+                size: 18,
+                color: Colors.white54,
+              ),
+            ],
+          ),
         ),
       ),
     );

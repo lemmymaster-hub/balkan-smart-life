@@ -26,6 +26,8 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
+	<key>NSLocationUsageDescription</key>
+	<string>BSL koristi tvoju lokaciju kako bi prikazao usluge u blizini.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

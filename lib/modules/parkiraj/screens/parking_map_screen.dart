@@ -5,9 +5,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:provider/provider.dart';
 
+import '../../../core/context/bsl_location_context.dart';
 import '../../../core/models/address_search_result.dart';
 import '../../../core/models/bsl_city.dart';
+import '../../../core/models/bsl_location_result.dart';
 import '../../../core/services/address_geocoding_service.dart';
 import '../../../core/theme/bsl_design_system.dart';
 import '../../../core/widgets/bsl_progress_bar.dart';
@@ -49,8 +52,23 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
   List<ParkingLocation> _parkings = [];
   ParkingLocation? _selectedParking;
   late String _displayedCity;
+  BslLocationContext? _locationContext;
+
+  bool _hasCenteredOnUser = false;
+  bool _isCenteringOnUser = false;
+  bool _userChangedMapTarget = false;
+  bool _requestedFreshLocation = false;
 
   CameraPosition get _initialCameraPosition {
+    final userLocation = _locationContext?.location;
+
+    if (userLocation != null) {
+      return CameraPosition(
+        target: LatLng(userLocation.latitude, userLocation.longitude),
+        zoom: 15.5,
+      );
+    }
+
     final city = BslCities.byName(widget.city);
 
     return CameraPosition(
@@ -66,6 +84,59 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
     _loadMapStyle();
     _loadParkingMarker();
     _listenParkings();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final nextLocationContext = context.read<BslLocationContext>();
+
+    if (!identical(_locationContext, nextLocationContext)) {
+      _locationContext?.removeListener(_handleLocationContextChanged);
+      _locationContext = nextLocationContext;
+      nextLocationContext.addListener(_handleLocationContextChanged);
+    }
+
+    final location = nextLocationContext.location;
+    if (!_userChangedMapTarget && location != null) {
+      _setDisplayedCityFromLocation(location);
+    }
+
+    if (!_requestedFreshLocation) {
+      _requestedFreshLocation = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        nextLocationContext.refresh();
+        _centerMapOnUser();
+      });
+    }
+  }
+
+  void _handleLocationContextChanged() {
+    if (!mounted) return;
+
+    final location = _locationContext?.location;
+
+    setState(() {
+      if (!_userChangedMapTarget && location != null) {
+        _setDisplayedCityFromLocation(location);
+      }
+    });
+
+    if (location != null && !_hasCenteredOnUser && !_userChangedMapTarget) {
+      _centerMapOnUser();
+    }
+  }
+
+  void _setDisplayedCityFromLocation(BslLocationResult location) {
+    final detectedCity = location.city.isNotEmpty
+        ? location.city
+        : location.municipality;
+
+    if (detectedCity.isNotEmpty) {
+      _displayedCity = BslCities.findExact(detectedCity)?.name ?? detectedCity;
+    }
   }
 
   Future<void> _loadMapStyle() async {
@@ -266,10 +337,71 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
   @override
   void dispose() {
     _parkingsSubscription?.cancel();
+    _locationContext?.removeListener(_handleLocationContextChanged);
     _searchController.dispose();
     _searchFocusNode.dispose();
     _mapController?.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleLocationButton() async {
+    final locationContext = _locationContext;
+    if (locationContext == null) return;
+
+    if (locationContext.location != null) {
+      await _centerMapOnUser(force: true);
+      return;
+    }
+
+    if (locationContext.shouldOpenSettings) {
+      final openedSettings = await locationContext.openRelevantSettings();
+      if (openedSettings) return;
+    }
+
+    await locationContext.refresh();
+
+    if (!mounted) return;
+
+    if (locationContext.location == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(locationContext.statusMessage),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    await _centerMapOnUser(force: true);
+  }
+
+  Future<void> _centerMapOnUser({bool force = false}) async {
+    if (_isCenteringOnUser || _mapController == null) return;
+    if (!force && (_hasCenteredOnUser || _userChangedMapTarget)) return;
+
+    final location = _locationContext?.location;
+    if (location == null) return;
+
+    _isCenteringOnUser = true;
+
+    try {
+      if (mounted) {
+        setState(() {
+          _userChangedMapTarget = false;
+          _selectedParking = null;
+          _setDisplayedCityFromLocation(location);
+        });
+      }
+
+      await _animateTo(
+        target: LatLng(location.latitude, location.longitude),
+        zoom: 15.5,
+      );
+
+      _hasCenteredOnUser = true;
+    } finally {
+      _isCenteringOnUser = false;
+    }
   }
 
   Future<void> _searchParkingOrAddress(String value) async {
@@ -284,6 +416,9 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
     final searchedCity = BslCities.findExact(rawQuery);
 
     if (searchedCity != null) {
+      _userChangedMapTarget = true;
+      _hasCenteredOnUser = true;
+
       await _animateTo(
         target: LatLng(searchedCity.latitude, searchedCity.longitude),
         zoom: searchedCity.mapZoom,
@@ -314,6 +449,9 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
       final parking = parkingMatches.first;
 
       debugPrint('BSL SEARCH PARKING MATCH: ${parking.name}');
+
+      _userChangedMapTarget = true;
+      _hasCenteredOnUser = true;
 
       await _animateTo(target: parking.position, zoom: 17);
 
@@ -375,6 +513,9 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
       'BSL SEARCH ADDRESS MATCH: ${address.label} ${address.location}',
     );
 
+    _userChangedMapTarget = true;
+    _hasCenteredOnUser = true;
+
     await _animateTo(target: address.location, zoom: 16);
 
     if (!mounted) return;
@@ -430,6 +571,9 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
           snippet: '${parking.freeSpots}/${parking.totalSpots} slobodno',
         ),
         onTap: () async {
+          _userChangedMapTarget = true;
+          _hasCenteredOnUser = true;
+
           await _animateTo(target: parking.position, zoom: 17);
 
           if (!mounted) return;
@@ -615,6 +759,8 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
     final displayedParkingCount = _parkings
         .where((parking) => BslCities.same(parking.city, _displayedCity))
         .length;
+    final locationContext = _locationContext;
+    final hasUserLocation = locationContext?.hasLocation ?? false;
 
     return Scaffold(
       backgroundColor: const Color(0xFF070B18),
@@ -623,10 +769,11 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
           GoogleMap(
             onMapCreated: (controller) {
               _mapController = controller;
+              unawaited(_centerMapOnUser());
             },
             initialCameraPosition: _initialCameraPosition,
-            myLocationButtonEnabled: true,
-            myLocationEnabled: false,
+            myLocationButtonEnabled: false,
+            myLocationEnabled: hasUserLocation,
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,
             mapType: MapType.normal,
@@ -641,10 +788,22 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
               title: 'Parkiraj.ba',
               subtitle: _displayedCity,
               badge: '$displayedParkingCount parkinga',
-              searchHint: 'Pretraži parking ili adresu...',
+              searchHint: 'Pretraži parking, adresu ili grad...',
               searchController: _searchController,
               searchFocusNode: _searchFocusNode,
               onSearchSubmitted: _searchParkingOrAddress,
+            ),
+          ),
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            right: 16,
+            bottom: _selectedParking == null ? 24 : 230,
+            child: _MapLocationButton(
+              isLoading: locationContext?.isLoading ?? false,
+              hasLocation: hasUserLocation,
+              needsAttention: locationContext?.shouldOpenSettings ?? false,
+              onTap: _handleLocationButton,
             ),
           ),
           AnimatedPositioned(
@@ -675,6 +834,62 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MapLocationButton extends StatelessWidget {
+  final bool isLoading;
+  final bool hasLocation;
+  final bool needsAttention;
+  final VoidCallback onTap;
+
+  const _MapLocationButton({
+    required this.isLoading,
+    required this.hasLocation,
+    required this.needsAttention,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = needsAttention
+        ? Colors.orangeAccent
+        : hasLocation
+        ? BslColors.cyan
+        : Colors.white70;
+
+    return Material(
+      color: const Color(0xEE111A33),
+      shape: const CircleBorder(),
+      elevation: 8,
+      shadowColor: BslColors.cyan.withValues(alpha: 0.35),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: 52,
+          height: 52,
+          child: Center(
+            child: isLoading
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      color: BslColors.cyan,
+                    ),
+                  )
+                : Icon(
+                    needsAttention
+                        ? Icons.location_disabled_rounded
+                        : Icons.my_location_rounded,
+                    color: color,
+                    size: 25,
+                  ),
+          ),
+        ),
       ),
     );
   }

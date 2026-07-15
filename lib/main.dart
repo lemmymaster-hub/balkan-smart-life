@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 
+import 'core/context/bsl_location_context.dart';
 import 'core/context/city_context.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -21,8 +22,13 @@ Future<void> main() async {
   await cityContext.load();
 
   runApp(
-    ChangeNotifierProvider<CityContext>.value(
-      value: cityContext,
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<CityContext>.value(value: cityContext),
+        ChangeNotifierProvider<BslLocationContext>(
+          create: (_) => BslLocationContext(),
+        ),
+      ],
       child: const BslApp(),
     ),
   );
@@ -42,9 +48,7 @@ class BslApp extends StatelessWidget {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
-              body: Center(
-                child: CircularProgressIndicator(),
-              ),
+              body: Center(child: CircularProgressIndicator()),
             );
           }
 
