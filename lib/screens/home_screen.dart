@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../core/context/bsl_location_context.dart';
 import '../core/context/city_context.dart';
+import '../modules/ev_chargers/screens/ev_chargers_map_screen.dart';
 import '../modules/parkiraj/screens/parkiraj_home_screen.dart';
 import '../services/weather_service.dart';
 import '../widgets/animated_logo.dart';
@@ -23,6 +24,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final List<MenuItemData> menuItems = [
     MenuItemData('Parkiraj.ba', Icons.local_parking),
+    MenuItemData('EL Punjači', Icons.ev_station_rounded),
     MenuItemData('Gradski prevoz', Icons.tram),
     MenuItemData('Taxi', Icons.local_taxi),
     MenuItemData('Vremenska prognoza', Icons.cloud),
@@ -549,6 +551,17 @@ class _MetroTileState extends State<MetroTile>
             MaterialPageRoute(
               builder: (context) =>
                   ParkirajHomeScreen(city: widget.selectedCity),
+            ),
+          );
+          return;
+        }
+
+        if (widget.item.title == 'EL Punjači') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  EvChargersMapScreen(city: widget.selectedCity),
             ),
           );
           return;

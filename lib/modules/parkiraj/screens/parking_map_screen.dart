@@ -13,8 +13,9 @@ import '../../../core/models/bsl_city.dart';
 import '../../../core/models/bsl_location_result.dart';
 import '../../../core/services/address_geocoding_service.dart';
 import '../../../core/theme/bsl_design_system.dart';
-import '../../../core/widgets/bsl_progress_bar.dart';
+import '../../../core/widgets/bsl_map_location_button.dart';
 import '../../../core/widgets/bsl_module_top_bar.dart';
+import '../../../core/widgets/bsl_progress_bar.dart';
 import '../models/parking_location.dart';
 import '../services/parking_service.dart';
 
@@ -829,7 +830,7 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
             curve: Curves.easeOutCubic,
             right: 16,
             bottom: _selectedParking == null ? 24 : 230,
-            child: _MapLocationButton(
+            child: BslMapLocationButton(
               isLoading: locationContext?.isLoading ?? false,
               hasLocation: hasUserLocation,
               needsAttention: locationContext?.shouldOpenSettings ?? false,
@@ -864,62 +865,6 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _MapLocationButton extends StatelessWidget {
-  final bool isLoading;
-  final bool hasLocation;
-  final bool needsAttention;
-  final VoidCallback onTap;
-
-  const _MapLocationButton({
-    required this.isLoading,
-    required this.hasLocation,
-    required this.needsAttention,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = needsAttention
-        ? Colors.orangeAccent
-        : hasLocation
-        ? BslColors.cyan
-        : Colors.white70;
-
-    return Material(
-      color: const Color(0xEE111A33),
-      shape: const CircleBorder(),
-      elevation: 8,
-      shadowColor: BslColors.cyan.withValues(alpha: 0.35),
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: SizedBox(
-          width: 52,
-          height: 52,
-          child: Center(
-            child: isLoading
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.4,
-                      color: BslColors.cyan,
-                    ),
-                  )
-                : Icon(
-                    needsAttention
-                        ? Icons.location_disabled_rounded
-                        : Icons.my_location_rounded,
-                    color: color,
-                    size: 25,
-                  ),
-          ),
-        ),
       ),
     );
   }
