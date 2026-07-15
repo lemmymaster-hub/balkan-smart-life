@@ -108,6 +108,40 @@ void main() {
       expect(gateway.openedAppSettings, isTrue);
       expect(gateway.openedLocationSettings, isFalse);
     });
+
+    test(
+      'objavljuje kontinuirane lokacije bez gubitka naziva mjesta',
+      () async {
+        final locationUpdates = StreamController<BslLocationResult>();
+        final gateway = _FakeLocationGateway(
+          currentLocation: () async =>
+              _location(latitude: 43.82, longitude: 18.37, isFromCache: false),
+          resolvedLocation: (location) async => location.copyWith(
+            city: 'Istočno Sarajevo',
+            municipality: 'Istočna Ilidža',
+            country: 'Bosna i Hercegovina',
+          ),
+          locationUpdates: () => locationUpdates.stream,
+        );
+        final locationContext = BslLocationContext(locationGateway: gateway);
+        addTearDown(() async {
+          locationContext.dispose();
+          await locationUpdates.close();
+        });
+
+        await locationContext.initialize();
+
+        locationUpdates.add(
+          _location(latitude: 43.821, longitude: 18.371, isFromCache: false),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(locationContext.location?.latitude, 43.821);
+        expect(locationContext.location?.longitude, 18.371);
+        expect(locationContext.location?.city, 'Istočno Sarajevo');
+        expect(locationContext.isTracking, isTrue);
+      },
+    );
   });
 }
 
@@ -128,6 +162,7 @@ BslLocationResult _location({
 class _FakeLocationGateway implements BslLocationGateway {
   final Future<BslLocationResult?> Function()? lastKnownLocation;
   final Future<BslLocationResult> Function()? currentLocation;
+  final Stream<BslLocationResult> Function()? locationUpdates;
   final Future<BslLocationResult> Function(BslLocationResult location)?
   resolvedLocation;
 
@@ -137,6 +172,7 @@ class _FakeLocationGateway implements BslLocationGateway {
   _FakeLocationGateway({
     this.lastKnownLocation,
     this.currentLocation,
+    this.locationUpdates,
     this.resolvedLocation,
   });
 
@@ -156,6 +192,11 @@ class _FakeLocationGateway implements BslLocationGateway {
         'Lokacija nije dostupna.',
       ),
     );
+  }
+
+  @override
+  Stream<BslLocationResult> watchLocation() {
+    return locationUpdates?.call() ?? const Stream<BslLocationResult>.empty();
   }
 
   @override

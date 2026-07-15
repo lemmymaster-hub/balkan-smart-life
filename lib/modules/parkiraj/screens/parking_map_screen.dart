@@ -58,6 +58,9 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
   bool _isCenteringOnUser = false;
   bool _userChangedMapTarget = false;
   bool _requestedFreshLocation = false;
+  bool _lastHasUserLocation = false;
+  bool _lastLocationIsLoading = false;
+  bool _lastLocationNeedsAttention = false;
 
   CameraPosition get _initialCameraPosition {
     final userLocation = _locationContext?.location;
@@ -96,6 +99,9 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
       _locationContext?.removeListener(_handleLocationContextChanged);
       _locationContext = nextLocationContext;
       nextLocationContext.addListener(_handleLocationContextChanged);
+      _lastHasUserLocation = nextLocationContext.hasLocation;
+      _lastLocationIsLoading = nextLocationContext.isLoading;
+      _lastLocationNeedsAttention = nextLocationContext.shouldOpenSettings;
     }
 
     final location = nextLocationContext.location;
@@ -116,13 +122,30 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
   void _handleLocationContextChanged() {
     if (!mounted) return;
 
-    final location = _locationContext?.location;
+    final locationContext = _locationContext;
+    if (locationContext == null) return;
 
-    setState(() {
-      if (!_userChangedMapTarget && location != null) {
-        _setDisplayedCityFromLocation(location);
-      }
-    });
+    final location = locationContext.location;
+    final detectedCity = !_userChangedMapTarget && location != null
+        ? _displayedCityFromLocation(location)
+        : null;
+    final shouldRebuild =
+        _lastHasUserLocation != locationContext.hasLocation ||
+        _lastLocationIsLoading != locationContext.isLoading ||
+        _lastLocationNeedsAttention != locationContext.shouldOpenSettings ||
+        (detectedCity != null && detectedCity != _displayedCity);
+
+    if (shouldRebuild) {
+      setState(() {
+        _lastHasUserLocation = locationContext.hasLocation;
+        _lastLocationIsLoading = locationContext.isLoading;
+        _lastLocationNeedsAttention = locationContext.shouldOpenSettings;
+
+        if (detectedCity != null) {
+          _displayedCity = detectedCity;
+        }
+      });
+    }
 
     if (location != null && !_hasCenteredOnUser && !_userChangedMapTarget) {
       _centerMapOnUser();
@@ -130,13 +153,20 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
   }
 
   void _setDisplayedCityFromLocation(BslLocationResult location) {
+    final detectedCity = _displayedCityFromLocation(location);
+    if (detectedCity != null) {
+      _displayedCity = detectedCity;
+    }
+  }
+
+  String? _displayedCityFromLocation(BslLocationResult location) {
     final detectedCity = location.city.isNotEmpty
         ? location.city
         : location.municipality;
 
-    if (detectedCity.isNotEmpty) {
-      _displayedCity = BslCities.findExact(detectedCity)?.name ?? detectedCity;
-    }
+    if (detectedCity.isEmpty) return null;
+
+    return BslCities.findExact(detectedCity)?.name ?? detectedCity;
   }
 
   Future<void> _loadMapStyle() async {

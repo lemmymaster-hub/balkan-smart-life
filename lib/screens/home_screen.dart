@@ -54,17 +54,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  Future<void> _handleLocationAction() async {
-    final locationContext = context.read<BslLocationContext>();
-
-    if (locationContext.shouldOpenSettings) {
-      final openedSettings = await locationContext.openRelevantSettings();
-      if (openedSettings) return;
-    }
-
-    await locationContext.refresh();
-  }
-
   Future<void> _openWeatherScreen() async {
     final selectedCity = context.read<CityContext>().selectedCity;
 
@@ -234,7 +223,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final cityContext = context.watch<CityContext>();
-    final locationContext = context.watch<BslLocationContext>();
     final selectedCity = cityContext.selectedCity;
     final cities = cityContext.cities;
     final dropdownValue = cities.contains(selectedCity) ? selectedCity : 'Pale';
@@ -332,11 +320,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       }
                     },
                   ),
-                  const SizedBox(height: 9),
-                  _HomeLocationStatus(
-                    locationContext: locationContext,
-                    onTap: _handleLocationAction,
-                  ),
                 ],
               ),
             ),
@@ -364,76 +347,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HomeLocationStatus extends StatelessWidget {
-  final BslLocationContext locationContext;
-  final VoidCallback onTap;
-
-  const _HomeLocationStatus({
-    required this.locationContext,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final status = locationContext.status;
-    final isAvailable = locationContext.hasLocation;
-    final needsSettings = locationContext.shouldOpenSettings;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
-          child: Row(
-            children: [
-              if (locationContext.isLoading)
-                const SizedBox(
-                  width: 17,
-                  height: 17,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.cyanAccent,
-                  ),
-                )
-              else
-                Icon(
-                  isAvailable
-                      ? Icons.my_location_rounded
-                      : Icons.location_disabled_rounded,
-                  size: 18,
-                  color: isAvailable ? Colors.cyanAccent : Colors.orangeAccent,
-                ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  locationContext.statusMessage,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              Icon(
-                needsSettings
-                    ? Icons.settings_rounded
-                    : status == BslLocationStatus.available
-                    ? Icons.refresh_rounded
-                    : Icons.chevron_right_rounded,
-                size: 18,
-                color: Colors.white54,
-              ),
-            ],
-          ),
         ),
       ),
     );

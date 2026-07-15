@@ -26,6 +26,8 @@ abstract interface class BslLocationGateway {
 
   Future<BslLocationResult> getCurrentLocation();
 
+  Stream<BslLocationResult> watchLocation();
+
   Future<BslLocationResult> resolvePlace(BslLocationResult location);
 
   Future<bool> openAppSettings();
@@ -35,6 +37,7 @@ abstract interface class BslLocationGateway {
 
 class BslLocationService implements BslLocationGateway {
   static const Duration _currentLocationTimeout = Duration(seconds: 15);
+  static const Duration trackingInterval = Duration(seconds: 1);
 
   @override
   Future<BslLocationResult?> getLastKnownLocation() async {
@@ -71,6 +74,26 @@ class BslLocationService implements BslLocationGateway {
       throw BslLocationException(
         BslLocationFailure.unavailable,
         'Trenutnu lokaciju nije moguće odrediti. Pokušaj ponovo.',
+      );
+    }
+  }
+
+  @override
+  Stream<BslLocationResult> watchLocation() async* {
+    await _ensureLocationAccess();
+
+    try {
+      await for (final position in Geolocator.getPositionStream(
+        locationSettings: _trackingSettings(),
+      )) {
+        yield _fromPosition(position, isFromCache: false);
+      }
+    } catch (error) {
+      if (error is BslLocationException) rethrow;
+
+      throw const BslLocationException(
+        BslLocationFailure.unavailable,
+        'Praćenje trenutne lokacije trenutno nije dostupno.',
       );
     }
   }
@@ -154,6 +177,21 @@ class BslLocationService implements BslLocationGateway {
         'Dozvola za lokaciju je trajno odbijena. Omogući je u postavkama uređaja.',
       );
     }
+  }
+
+  LocationSettings _trackingSettings() {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+        intervalDuration: trackingInterval,
+      );
+    }
+
+    return const LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 0,
+    );
   }
 
   BslLocationResult _fromPosition(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../models/bsl_location_result.dart';
@@ -24,6 +26,7 @@ class BslLocationContext extends ChangeNotifier {
   Object? _error;
   bool _isLoading = false;
   Future<void>? _activeRequest;
+  StreamSubscription<BslLocationResult>? _trackingSubscription;
 
   BslLocationStatus get status => _status;
 
@@ -34,6 +37,8 @@ class BslLocationContext extends ChangeNotifier {
   bool get isLoading => _isLoading;
 
   bool get hasLocation => _location != null;
+
+  bool get isTracking => _trackingSubscription != null;
 
   BslLocationFailure? get failure {
     final currentError = _error;
@@ -88,6 +93,7 @@ class BslLocationContext extends ChangeNotifier {
     if (activeRequest != null) return activeRequest;
 
     if (!force && _status == BslLocationStatus.available) {
+      _startTracking();
       return Future<void>.value();
     }
 
@@ -164,7 +170,61 @@ class BslLocationContext extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+
+      if (_status == BslLocationStatus.available) {
+        _startTracking();
+      }
     }
+  }
+
+  void _startTracking() {
+    if (_trackingSubscription != null) return;
+
+    late final StreamSubscription<BslLocationResult> subscription;
+    subscription = _locationGateway.watchLocation().listen(
+      _handleTrackedLocation,
+      onError: (Object error, StackTrace stackTrace) {
+        if (identical(_trackingSubscription, subscription)) {
+          _trackingSubscription = null;
+        }
+        _handleTrackingError(error);
+      },
+      onDone: () {
+        if (identical(_trackingSubscription, subscription)) {
+          _trackingSubscription = null;
+        }
+      },
+      cancelOnError: true,
+    );
+    _trackingSubscription = subscription;
+  }
+
+  void _handleTrackedLocation(BslLocationResult nextLocation) {
+    final previousLocation = _location;
+
+    _location = nextLocation.copyWith(
+      city: nextLocation.city.isNotEmpty
+          ? nextLocation.city
+          : previousLocation?.city,
+      municipality: nextLocation.municipality.isNotEmpty
+          ? nextLocation.municipality
+          : previousLocation?.municipality,
+      country: nextLocation.country.isNotEmpty
+          ? nextLocation.country
+          : previousLocation?.country,
+    );
+    _status = BslLocationStatus.available;
+    _error = null;
+    notifyListeners();
+  }
+
+  void _handleTrackingError(Object error) {
+    _error = error;
+    _status = _location == null
+        ? _statusFromError(error)
+        : BslLocationStatus.available;
+    debugPrint('BSL LOCATION TRACKING ERROR: $error');
+    notifyListeners();
   }
 
   BslLocationStatus _statusFromError(Object error) {
@@ -182,5 +242,17 @@ class BslLocationContext extends ChangeNotifier {
       case BslLocationFailure.unavailable:
         return BslLocationStatus.unavailable;
     }
+  }
+
+  @override
+  void dispose() {
+    final trackingSubscription = _trackingSubscription;
+    _trackingSubscription = null;
+
+    if (trackingSubscription != null) {
+      unawaited(trackingSubscription.cancel());
+    }
+
+    super.dispose();
   }
 }
