@@ -67,6 +67,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  void _showLegalNotices() {
+    showLicensePage(
+      context: context,
+      applicationName: 'Balkan Smart Life',
+      applicationVersion: '1.0.0',
+      applicationLegalese: '© 2026 Balkan Smart Life • Google Navigation SDK',
+    );
+  }
+
   void _showUserMenu() {
     showGeneralDialog(
       context: context,
@@ -158,6 +167,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           text: 'Language',
                           onTap: () {
                             Navigator.pop(context);
+                          },
+                        ),
+                        _menuItem(
+                          icon: Icons.gavel_rounded,
+                          text: 'Pravne napomene',
+                          onTap: () {
+                            Navigator.pop(context);
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) _showLegalNotices();
+                            });
                           },
                         ),
                         const Divider(color: Colors.white24),

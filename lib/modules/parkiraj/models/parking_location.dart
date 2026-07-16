@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_navigation_flutter/google_navigation_flutter.dart';
+
+import '../../../core/models/bsl_city.dart';
 
 class ParkingLocation {
   final String id;
@@ -32,7 +34,16 @@ class ParkingLocation {
     this.note = '',
   });
 
-  LatLng get position => LatLng(lat, lng);
+  LatLng get position => LatLng(latitude: lat, longitude: lng);
+
+  BslCity get resolvedBslCity {
+    return BslCities.findExact(city) ??
+        BslCities.nearestTo(latitude: lat, longitude: lng);
+  }
+
+  bool belongsToBslCity(String cityName) {
+    return BslCities.same(resolvedBslCity.name, cityName);
+  }
 
   ParkingLocation copyWith({
     String? id,

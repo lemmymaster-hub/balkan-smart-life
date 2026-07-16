@@ -1,12 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
-enum SpotStatus {
-  freeConfirmed,
-  recentlyFree,
-  occupied,
-  reserved,
-}
+enum SpotStatus { freeConfirmed, recentlyFree, occupied, reserved }
 
 class ParkingSpotData {
   final String id;
@@ -42,8 +37,8 @@ class ParkingSpotData {
     return ParkingSpotData(
       id: doc.id,
       position: LatLng(
-        (data['lat'] as num).toDouble(),
-        (data['lng'] as num).toDouble(),
+        latitude: (data['lat'] as num).toDouble(),
+        longitude: (data['lng'] as num).toDouble(),
       ),
       status: parsedStatus,
       reservedBy: (data['reservedBy'] ?? '').toString(),

@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
 import '../models/address_search_result.dart';
 
@@ -37,7 +37,10 @@ class AddressGeocodingService {
 
         return AddressSearchResult(
           label: query,
-          location: LatLng(location.latitude, location.longitude),
+          location: LatLng(
+            latitude: location.latitude,
+            longitude: location.longitude,
+          ),
         );
       } on PlatformException catch (error) {
         lastError = error;

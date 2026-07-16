@@ -33,5 +33,28 @@ void main() {
         'Istočno Sarajevo',
       );
     });
+
+    test('određuje najbliži BSL grad prema koordinatama', () {
+      expect(
+        BslCities.nearestTo(latitude: 43.8581, longitude: 18.4214).name,
+        'Sarajevo',
+      );
+      expect(
+        BslCities.nearestTo(latitude: 44.7725, longitude: 17.1908).name,
+        'Banja Luka',
+      );
+    });
+
+    test('računa udaljenost između koordinata', () {
+      final distance = BslCities.distanceInKilometers(
+        fromLatitude: 43.8563,
+        fromLongitude: 18.4131,
+        toLatitude: 43.8581,
+        toLongitude: 18.4214,
+      );
+
+      expect(distance, greaterThan(0.5));
+      expect(distance, lessThan(1));
+    });
   });
 }

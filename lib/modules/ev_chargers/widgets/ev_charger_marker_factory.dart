@@ -1,7 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
 import '../../../core/theme/bsl_design_system.dart';
 import '../models/ev_charger.dart';
@@ -10,7 +10,7 @@ abstract final class EvChargerMarkerFactory {
   static const double _canvasWidth = 184;
   static const double _canvasHeight = 226;
 
-  static Future<BitmapDescriptor> create({
+  static Future<ImageDescriptor> create({
     required EvChargingFee fee,
     String? label,
     bool isSelected = false,
@@ -80,11 +80,11 @@ abstract final class EvChargerMarkerFactory {
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
 
     if (data == null) {
-      return BitmapDescriptor.defaultMarkerWithHue(_hueForFee(fee));
+      return ImageDescriptor.defaultImage;
     }
 
-    return BitmapDescriptor.bytes(
-      data.buffer.asUint8List(),
+    return registerBitmapImage(
+      bitmap: data,
       width: 72,
       height: 88,
       imagePixelRatio: 1,
@@ -215,17 +215,6 @@ abstract final class EvChargerMarkerFactory {
         return BslColors.danger;
       case EvChargingFee.unknown:
         return BslColors.warning;
-    }
-  }
-
-  static double _hueForFee(EvChargingFee fee) {
-    switch (fee) {
-      case EvChargingFee.free:
-        return BitmapDescriptor.hueGreen;
-      case EvChargingFee.paid:
-        return BitmapDescriptor.hueRed;
-      case EvChargingFee.unknown:
-        return BitmapDescriptor.hueYellow;
     }
   }
 }

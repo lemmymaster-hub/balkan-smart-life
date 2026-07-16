@@ -1,4 +1,4 @@
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
 import '../../../core/models/bsl_city.dart';
 
@@ -73,7 +73,7 @@ class EvCharger {
     this.verifiedAt,
   });
 
-  LatLng get position => LatLng(latitude, longitude);
+  LatLng get position => LatLng(latitude: latitude, longitude: longitude);
 
   double? get maxPowerKw {
     final values = connectors

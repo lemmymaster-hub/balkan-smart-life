@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 class BslCity {
   final String name;
   final double latitude;
@@ -60,6 +62,57 @@ abstract final class BslCities {
   static bool same(String first, String second) {
     return normalize(first) == normalize(second);
   }
+
+  static BslCity nearestTo({
+    required double latitude,
+    required double longitude,
+  }) {
+    return values.reduce((closest, candidate) {
+      final closestDistance = distanceInKilometers(
+        fromLatitude: latitude,
+        fromLongitude: longitude,
+        toLatitude: closest.latitude,
+        toLongitude: closest.longitude,
+      );
+      final candidateDistance = distanceInKilometers(
+        fromLatitude: latitude,
+        fromLongitude: longitude,
+        toLatitude: candidate.latitude,
+        toLongitude: candidate.longitude,
+      );
+
+      return candidateDistance < closestDistance ? candidate : closest;
+    });
+  }
+
+  static double distanceInKilometers({
+    required double fromLatitude,
+    required double fromLongitude,
+    required double toLatitude,
+    required double toLongitude,
+  }) {
+    const earthRadiusKilometers = 6371.0;
+    final latitudeDelta = _toRadians(toLatitude - fromLatitude);
+    final longitudeDelta = _toRadians(toLongitude - fromLongitude);
+    final fromLatitudeRadians = _toRadians(fromLatitude);
+    final toLatitudeRadians = _toRadians(toLatitude);
+
+    final haversine =
+        math.pow(math.sin(latitudeDelta / 2), 2) +
+        math.cos(fromLatitudeRadians) *
+            math.cos(toLatitudeRadians) *
+            math.pow(math.sin(longitudeDelta / 2), 2);
+    final normalizedHaversine = haversine.clamp(0.0, 1.0).toDouble();
+
+    return earthRadiusKilometers *
+        2 *
+        math.atan2(
+          math.sqrt(normalizedHaversine),
+          math.sqrt(1 - normalizedHaversine),
+        );
+  }
+
+  static double _toRadians(double degrees) => degrees * math.pi / 180;
 
   static String normalize(String value) {
     return value
