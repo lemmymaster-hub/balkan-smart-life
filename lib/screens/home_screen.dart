@@ -7,10 +7,13 @@ import 'package:provider/provider.dart';
 
 import '../core/context/bsl_location_context.dart';
 import '../core/context/city_context.dart';
+import '../core/services/home_tile_order_service.dart';
+import '../core/widgets/bsl_reorderable_grid.dart';
 import '../modules/ev_chargers/screens/ev_chargers_map_screen.dart';
 import '../modules/parkiraj/screens/parkiraj_home_screen.dart';
 import '../services/weather_service.dart';
 import '../widgets/animated_logo.dart';
+import '../widgets/home_layout_editor.dart';
 import 'profile_screen.dart';
 import 'weather_screen.dart';
 
@@ -22,21 +25,41 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
-  final List<MenuItemData> menuItems = [
-    MenuItemData('Parkiraj.ba', Icons.local_parking),
-    MenuItemData('EL Punjači', Icons.ev_station_rounded),
-    MenuItemData('Gradski prevoz', Icons.tram),
-    MenuItemData('Taxi', Icons.local_taxi),
-    MenuItemData('Vremenska prognoza', Icons.cloud),
-    MenuItemData('Benzinske pumpe', Icons.local_gas_station),
-    MenuItemData('Plati račun', Icons.receipt_long),
-    MenuItemData('Novčanik', Icons.account_balance_wallet),
+  static const List<MenuItemData> _defaultMenuItems = [
+    MenuItemData(HomeModuleIds.parking, 'Parkiraj.ba', Icons.local_parking),
+    MenuItemData(
+      HomeModuleIds.evChargers,
+      'EL Punjači',
+      Icons.ev_station_rounded,
+    ),
+    MenuItemData(HomeModuleIds.publicTransport, 'Gradski prevoz', Icons.tram),
+    MenuItemData(HomeModuleIds.taxi, 'Taxi', Icons.local_taxi),
+    MenuItemData(HomeModuleIds.weather, 'Vremenska prognoza', Icons.cloud),
+    MenuItemData(
+      HomeModuleIds.fuelStations,
+      'Benzinske pumpe',
+      Icons.local_gas_station,
+    ),
+    MenuItemData(HomeModuleIds.payBill, 'Plati račun', Icons.receipt_long),
+    MenuItemData(
+      HomeModuleIds.wallet,
+      'Novčanik',
+      Icons.account_balance_wallet,
+    ),
   ];
+
+  final HomeTileOrderService _tileOrderService = HomeTileOrderService();
+  late List<MenuItemData> _menuItems;
+  Future<void> _tileOrderSaveQueue = Future<void>.value();
+  bool _isTileOrderLoaded = false;
+  bool _isEditingTileOrder = false;
 
   @override
   void initState() {
     super.initState();
+    _menuItems = List<MenuItemData>.of(_defaultMenuItems);
     WidgetsBinding.instance.addObserver(this);
+    unawaited(_loadTileOrder());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       context.read<BslLocationContext>().initialize();
@@ -47,6 +70,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       context.read<BslLocationContext>().refresh();
+    } else if (_isEditingTileOrder &&
+        (state == AppLifecycleState.inactive ||
+            state == AppLifecycleState.paused)) {
+      _queueTileOrderSave();
     }
   }
 
@@ -54,6 +81,102 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  String get _tileOrderUserId {
+    return FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+  }
+
+  List<String> get _availableTileIds {
+    return _defaultMenuItems.map((item) => item.id).toList(growable: false);
+  }
+
+  Future<void> _loadTileOrder() async {
+    var orderedItems = List<MenuItemData>.of(_defaultMenuItems);
+
+    try {
+      final orderedIds = await _tileOrderService.loadOrder(
+        userId: _tileOrderUserId,
+        availableIds: _availableTileIds,
+      );
+      final itemsById = <String, MenuItemData>{
+        for (final item in _defaultMenuItems) item.id: item,
+      };
+      orderedItems = orderedIds
+          .map((id) => itemsById[id])
+          .whereType<MenuItemData>()
+          .toList(growable: true);
+    } catch (error, stackTrace) {
+      debugPrint('BSL HOME TILE ORDER LOAD ERROR: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _menuItems = orderedItems;
+      _isTileOrderLoaded = true;
+    });
+  }
+
+  void _setTileOrderEditing(bool value) {
+    if (_isEditingTileOrder == value) return;
+
+    setState(() {
+      _isEditingTileOrder = value;
+    });
+
+    if (!value) {
+      _queueTileOrderSave();
+    }
+  }
+
+  void _reorderTile(int oldIndex, int newIndex) {
+    if (oldIndex == newIndex ||
+        oldIndex < 0 ||
+        newIndex < 0 ||
+        oldIndex >= _menuItems.length ||
+        newIndex >= _menuItems.length) {
+      return;
+    }
+
+    setState(() {
+      final item = _menuItems.removeAt(oldIndex);
+      _menuItems.insert(newIndex, item);
+    });
+  }
+
+  void _queueTileOrderSave() {
+    final userId = _tileOrderUserId;
+    final orderedIds = _menuItems
+        .map((item) => item.id)
+        .toList(growable: false);
+    final availableIds = _availableTileIds;
+
+    _tileOrderSaveQueue = _tileOrderSaveQueue.then((_) async {
+      try {
+        await _tileOrderService.saveOrder(
+          userId: userId,
+          orderedIds: orderedIds,
+          availableIds: availableIds,
+        );
+      } catch (error, stackTrace) {
+        debugPrint('BSL HOME TILE ORDER SAVE ERROR: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    });
+  }
+
+  void _resetTileOrder() {
+    setState(() {
+      _menuItems = List<MenuItemData>.of(_defaultMenuItems);
+    });
+    _queueTileOrderSave();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Vraćen je početni raspored modula.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _openWeatherScreen() async {
@@ -248,149 +371,218 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final cities = cityContext.cities;
     final dropdownValue = cities.contains(selectedCity) ? selectedCity : 'Pale';
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF070B18),
-      appBar: AppBar(
+    return PopScope<void>(
+      canPop: !_isEditingTileOrder,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _isEditingTileOrder) {
+          _setTileOrderEditing(false);
+        }
+      },
+      child: Scaffold(
         backgroundColor: const Color(0xFF070B18),
-        elevation: 0,
-        title: const Text('Balkan Smart Life'),
-        actions: [
-          IconButton(
-            icon: const Icon(
-              Icons.menu_rounded,
-              size: 32,
-              color: Colors.cyanAccent,
-              shadows: [Shadow(color: Colors.cyanAccent, blurRadius: 12)],
-            ),
-            onPressed: _showUserMenu,
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0D1428),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.cyanAccent.withValues(alpha: 0.25),
-                    blurRadius: 22,
-                    spreadRadius: 1,
-                  ),
-                ],
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF070B18),
+          elevation: 0,
+          title: const Text('Balkan Smart Life'),
+          actions: [
+            IconButton(
+              icon: const Icon(
+                Icons.menu_rounded,
+                size: 32,
+                color: Colors.cyanAccent,
+                shadows: [Shadow(color: Colors.cyanAccent, blurRadius: 12)],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const AnimatedBslLogo(
-                        height: 85,
-                        repeatDelay: Duration(minutes: 1),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text(
-                          'Balkan Smart Life',
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: dropdownValue,
-                    dropdownColor: const Color(0xFF111A33),
-                    decoration: InputDecoration(
-                      labelText: 'Izaberi grad',
-                      labelStyle: const TextStyle(color: Colors.white70),
-                      prefixIcon: const Icon(
-                        Icons.location_city,
-                        color: Colors.white70,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.22),
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.cyanAccent),
-                      ),
-                    ),
-                    style: const TextStyle(color: Colors.white),
-                    items: cities
-                        .map(
-                          (city) => DropdownMenuItem<String>(
-                            value: city,
-                            child: Text(city),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) async {
-                      if (value != null) {
-                        await context.read<CityContext>().setCity(value);
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: GridView.builder(
-                  itemCount: menuItems.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    childAspectRatio: 1.15,
-                  ),
-                  itemBuilder: (context, index) {
-                    final item = menuItems[index];
-
-                    return MetroTile(
-                      item: item,
-                      selectedCity: selectedCity,
-                      onOpenWeather: _openWeatherScreen,
-                    );
-                  },
-                ),
-              ),
+              onPressed: _showUserMenu,
             ),
           ],
+        ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0D1428),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.cyanAccent.withValues(alpha: 0.25),
+                      blurRadius: 22,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const AnimatedBslLogo(
+                          height: 85,
+                          repeatDelay: Duration(minutes: 1),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Balkan Smart Life',
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: dropdownValue,
+                      dropdownColor: const Color(0xFF111A33),
+                      decoration: InputDecoration(
+                        labelText: 'Izaberi grad',
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        prefixIcon: const Icon(
+                          Icons.location_city,
+                          color: Colors.white70,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.22),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(
+                            color: Colors.cyanAccent,
+                          ),
+                        ),
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                      items: cities
+                          .map(
+                            (city) => DropdownMenuItem<String>(
+                              value: city,
+                              child: Text(city),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) async {
+                        if (value != null) {
+                          await context.read<CityContext>().setCity(value);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              if (_isEditingTileOrder)
+                HomeLayoutEditorBar(
+                  onReset: _resetTileOrder,
+                  onDone: () => _setTileOrderEditing(false),
+                ),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: !_isTileOrderLoaded
+                      ? const Center(
+                          key: ValueKey<String>('tile-order-loading'),
+                          child: CircularProgressIndicator(
+                            color: Colors.cyanAccent,
+                          ),
+                        )
+                      : BslReorderableGrid<MenuItemData>(
+                          key: const ValueKey<String>('home-module-grid'),
+                          items: _menuItems,
+                          itemId: (item) => item.id,
+                          isEditing: _isEditingTileOrder,
+                          onEditingChanged: _setTileOrderEditing,
+                          onReorder: _reorderTile,
+                          onReorderEnd: _queueTileOrderSave,
+                          padding: const EdgeInsets.all(16),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                mainAxisSpacing: 16,
+                                crossAxisSpacing: 16,
+                                childAspectRatio: 1.15,
+                              ),
+                          feedbackBuilder: (context, item) {
+                            return HomeTileDragFeedback(
+                              title: item.title,
+                              icon: item.icon,
+                            );
+                          },
+                          itemBuilder:
+                              (
+                                context,
+                                item, {
+                                required bool isEditing,
+                                required bool isDragging,
+                                required bool isDropTarget,
+                              }) {
+                                return AnimatedScale(
+                                  duration: const Duration(milliseconds: 140),
+                                  scale: isDropTarget ? 0.94 : 1,
+                                  child: MetroTile(
+                                    item: item,
+                                    selectedCity: selectedCity,
+                                    onOpenWeather: _openWeatherScreen,
+                                    interactionEnabled: !isEditing,
+                                    isEditing: isEditing,
+                                    isDragging: isDragging,
+                                    isDropTarget: isDropTarget,
+                                  ),
+                                );
+                              },
+                        ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
+abstract final class HomeModuleIds {
+  static const String parking = 'parking';
+  static const String evChargers = 'ev_chargers';
+  static const String publicTransport = 'public_transport';
+  static const String taxi = 'taxi';
+  static const String weather = 'weather';
+  static const String fuelStations = 'fuel_stations';
+  static const String payBill = 'pay_bill';
+  static const String wallet = 'wallet';
+}
+
 class MenuItemData {
+  final String id;
   final String title;
   final IconData icon;
 
-  MenuItemData(this.title, this.icon);
+  const MenuItemData(this.id, this.title, this.icon);
 }
 
 class MetroTile extends StatefulWidget {
   final MenuItemData item;
   final String selectedCity;
   final Future<void> Function()? onOpenWeather;
+  final bool interactionEnabled;
+  final bool isEditing;
+  final bool isDragging;
+  final bool isDropTarget;
 
   const MetroTile({
     super.key,
     required this.item,
     required this.selectedCity,
     this.onOpenWeather,
+    this.interactionEnabled = true,
+    this.isEditing = false,
+    this.isDragging = false,
+    this.isDropTarget = false,
   });
 
   @override
@@ -406,7 +598,7 @@ class _MetroTileState extends State<MetroTile>
   String weatherType = 'cloud';
   int _weatherRequestId = 0;
 
-  bool get isWeatherTile => widget.item.title == 'Vremenska prognoza';
+  bool get isWeatherTile => widget.item.id == HomeModuleIds.weather;
 
   @override
   void initState() {
@@ -563,38 +755,42 @@ class _MetroTileState extends State<MetroTile>
   Widget build(BuildContext context) {
     return InkWell(
       borderRadius: BorderRadius.circular(24),
-      onTap: () async {
-        if (widget.item.title == 'Parkiraj.ba') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  ParkirajHomeScreen(city: widget.selectedCity),
-            ),
-          );
-          return;
-        }
+      onTap: !widget.interactionEnabled
+          ? null
+          : () async {
+              if (widget.item.id == HomeModuleIds.parking) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        ParkirajHomeScreen(city: widget.selectedCity),
+                  ),
+                );
+                return;
+              }
 
-        if (widget.item.title == 'EL Punjači') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  EvChargersMapScreen(city: widget.selectedCity),
-            ),
-          );
-          return;
-        }
+              if (widget.item.id == HomeModuleIds.evChargers) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        EvChargersMapScreen(city: widget.selectedCity),
+                  ),
+                );
+                return;
+              }
 
-        if (widget.item.title == 'Vremenska prognoza') {
-          await widget.onOpenWeather?.call();
-          return;
-        }
+              if (widget.item.id == HomeModuleIds.weather) {
+                await widget.onOpenWeather?.call();
+                return;
+              }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${widget.item.title} modul uskoro dolazi')),
-        );
-      },
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('${widget.item.title} modul uskoro dolazi'),
+                ),
+              );
+            },
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, child) {
@@ -608,14 +804,27 @@ class _MetroTileState extends State<MetroTile>
               ),
               boxShadow: [
                 BoxShadow(
-                  color: isWeatherTile
+                  color: widget.isDropTarget
+                      ? Colors.cyanAccent.withValues(alpha: 0.56)
+                      : isWeatherTile
                       ? Colors.cyanAccent.withValues(alpha: 0.30)
                       : Colors.cyanAccent.withValues(alpha: 0.22),
-                  blurRadius: isWeatherTile ? 34 : 28,
-                  spreadRadius: 1,
+                  blurRadius: widget.isDropTarget
+                      ? 40
+                      : isWeatherTile
+                      ? 34
+                      : 28,
+                  spreadRadius: widget.isDropTarget ? 2 : 1,
                 ),
               ],
-              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+              border: Border.all(
+                color: widget.isDragging
+                    ? Colors.white.withValues(alpha: 0.70)
+                    : widget.isEditing
+                    ? Colors.cyanAccent.withValues(alpha: 0.56)
+                    : Colors.white.withValues(alpha: 0.18),
+                width: widget.isDragging || widget.isEditing ? 1.4 : 1,
+              ),
             ),
             child: Stack(
               children: [
@@ -669,6 +878,33 @@ class _MetroTileState extends State<MetroTile>
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                if (widget.isEditing)
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: const Color(0xDD0D1428),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.cyanAccent.withValues(alpha: 0.65),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.cyanAccent.withValues(alpha: 0.30),
+                            blurRadius: 14,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.drag_indicator_rounded,
+                        size: 20,
+                        color: Colors.cyanAccent,
+                      ),
                     ),
                   ),
               ],

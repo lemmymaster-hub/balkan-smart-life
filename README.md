@@ -12,6 +12,13 @@ gradovima i opštinama u regionu.
 - trajna korisnička sesija
 - korisnički profil i odjava
 
+### Početni ekran
+
+- promjena rasporeda modula dugim pritiskom i prevlačenjem
+- lokalno pamćenje rasporeda odvojeno za svakog prijavljenog korisnika
+- automatsko dodavanje novih modula bez gubitka korisničkog rasporeda
+- vraćanje početnog rasporeda iz režima uređivanja
+
 ### Vremenska prognoza
 
 - trenutno vrijeme i sedmodnevna prognoza
