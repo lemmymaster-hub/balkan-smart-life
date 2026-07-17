@@ -63,6 +63,7 @@ flutter:
     - assets/images/bsl_logo.png
     - assets/maps/bsl_dark_map_style.json
     - assets/markers/bsl_parking_marker.png
+    - assets/markers/bsl_navigation_car_marker.png
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

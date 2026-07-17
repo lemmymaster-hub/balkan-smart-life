@@ -31,6 +31,11 @@ class ParkingMapScreen extends StatefulWidget {
 }
 
 class _ParkingMapScreenState extends State<ParkingMapScreen> {
+  static const String _navigationVehicleMarkerAsset =
+      'assets/markers/bsl_navigation_car_marker.png';
+  static const double _navigationVehicleMarkerWidth = 32;
+  static const double _navigationVehicleMarkerHeight = 68;
+
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
 
@@ -48,10 +53,14 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
   ImageDescriptor? _selectedGreenParkingMarker;
   ImageDescriptor? _selectedOrangeParkingMarker;
   ImageDescriptor? _selectedRedParkingMarker;
+  ImageDescriptor? _navigationVehicleMarker;
   StreamSubscription<List<ParkingLocation>>? _parkingsSubscription;
   Map<String, ParkingLocation> _parkingByMarkerId = const {};
+  List<Marker> _parkingMarkers = const <Marker>[];
   bool _markerSyncInProgress = false;
   bool _markerSyncPending = false;
+  bool _navigationVehicleMarkerLoadRequested = false;
+  bool? _nativeLocationIndicatorEnabled;
 
   String? _darkMapStyle;
   bool _isLoading = true;
@@ -109,11 +118,17 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
         _selectedParking = destination;
       }
     });
+    unawaited(_setMapLocationEnabled(_locationContext?.hasLocation ?? false));
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+
+    if (!_navigationVehicleMarkerLoadRequested) {
+      _navigationVehicleMarkerLoadRequested = true;
+      unawaited(_loadNavigationVehicleMarker());
+    }
 
     final nextLocationContext = context.read<BslLocationContext>();
 
@@ -216,6 +231,43 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
     final controller = _mapController;
     if (controller != null) {
       await _applyMapStyle(controller);
+    }
+  }
+
+  Future<void> _loadNavigationVehicleMarker() async {
+    ImageDescriptor? registeredMarker;
+
+    try {
+      final imageConfiguration = createLocalImageConfiguration(context);
+      final imageKey = await const AssetImage(
+        _navigationVehicleMarkerAsset,
+      ).obtainKey(imageConfiguration);
+      final assetData = await imageKey.bundle.load(imageKey.name);
+
+      registeredMarker = await registerBitmapImage(
+        bitmap: assetData,
+        imagePixelRatio: imageKey.scale,
+        width: _navigationVehicleMarkerWidth,
+        height: _navigationVehicleMarkerHeight,
+      );
+
+      if (!mounted) {
+        await unregisterImage(registeredMarker);
+        return;
+      }
+
+      _navigationVehicleMarker = registeredMarker;
+      await _parkingNavigation.setVehicleMarkerIcon(registeredMarker);
+    } catch (error, stackTrace) {
+      if (registeredMarker?.registeredImageId != null) {
+        try {
+          await unregisterImage(registeredMarker!);
+        } catch (_) {
+          // Primarna greška se prijavljuje ispod.
+        }
+      }
+      debugPrint('BSL NAVIGATION VEHICLE ASSET ERROR: $error');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 
@@ -788,6 +840,7 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
     GoogleNavigationViewController controller,
   ) async {
     _mapController = controller;
+    _nativeLocationIndicatorEnabled = null;
 
     await _parkingNavigation.attachMapController(controller);
     await _applyMapStyle(controller);
@@ -816,11 +869,23 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
     final controller = _mapController;
     if (controller == null) return;
 
+    final showNativeLocation =
+        enabled && !_parkingNavigation.isVehicleMarkerVisible;
+    if (_nativeLocationIndicatorEnabled == showNativeLocation) return;
+
+    _nativeLocationIndicatorEnabled = showNativeLocation;
+
     try {
-      await controller.setMyLocationEnabled(enabled);
+      await controller.setMyLocationEnabled(showNativeLocation);
     } on ViewNotFoundException {
+      if (identical(_mapController, controller)) {
+        _nativeLocationIndicatorEnabled = null;
+      }
       // Ekran je zatvoren prije završetka nativnog poziva.
     } catch (error) {
+      if (identical(_mapController, controller)) {
+        _nativeLocationIndicatorEnabled = null;
+      }
       debugPrint('BSL PARKING LOCATION INDICATOR ERROR: $error');
     }
   }
@@ -878,24 +943,46 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
 
     try {
       _parkingByMarkerId = const {};
-      await controller.clearMarkers();
+      await _removeParkingMarkers(controller);
+
+      if (!mounted || !identical(_mapController, controller)) return;
+
       final markers = await controller.addMarkers(markerOptions);
 
       if (!mounted || !identical(_mapController, controller)) return;
 
       final parkingByMarkerId = <String, ParkingLocation>{};
+      final activeParkingMarkers = <Marker>[];
       for (var index = 0; index < markers.length; index++) {
         final marker = markers[index];
         if (marker != null && index < parkings.length) {
+          activeParkingMarkers.add(marker);
           parkingByMarkerId[marker.markerId] = parkings[index];
         }
       }
+      _parkingMarkers = activeParkingMarkers;
       _parkingByMarkerId = parkingByMarkerId;
     } on ViewNotFoundException {
       // Ekran je zatvoren prije završetka nativnog poziva.
     } catch (error, stackTrace) {
       debugPrint('BSL PARKING MARKER SYNC ERROR: $error');
       debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _removeParkingMarkers(
+    GoogleNavigationViewController controller,
+  ) async {
+    final markers = _parkingMarkers;
+    _parkingMarkers = const <Marker>[];
+    if (markers.isEmpty) return;
+
+    try {
+      await controller.removeMarkers(markers);
+    } on MarkerNotFoundException {
+      // Markeri su već uklonjeni pri ponovnom kreiranju mape.
+    } on ViewNotFoundException {
+      // Ekran je zatvoren prije završetka nativnog poziva.
     }
   }
 
@@ -951,6 +1038,7 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
       _selectedGreenParkingMarker,
       _selectedOrangeParkingMarker,
       _selectedRedParkingMarker,
+      _navigationVehicleMarker,
     };
 
     await _unregisterParkingImages(images.whereType<ImageDescriptor>());
@@ -970,6 +1058,9 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
   }
 
   Future<void> _disposeMapResources(GoogleMapViewController? controller) async {
+    _parkingMarkers = const <Marker>[];
+    _parkingByMarkerId = const {};
+
     if (controller != null) {
       try {
         await controller.clearMarkers();

@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
 import '../../../core/theme/bsl_design_system.dart';
+import 'navigation_vehicle_marker_controller.dart';
 import '../models/parking_location.dart';
+import '../services/navigation_vehicle_motion.dart';
 import '../services/parking_navigation_messages.dart';
 
 enum ParkingNavigationStage {
@@ -34,6 +36,8 @@ class ParkingNavigationController extends ChangeNotifier {
   LatLng? _latestRoadSnappedLocation;
   Future<void>? _cleanupFuture;
 
+  late final NavigationVehicleMarkerController _vehicleMarkerController;
+
   ParkingNavigationStage _stage = ParkingNavigationStage.idle;
   ParkingLocation? _destination;
   NavInfo? _navInfo;
@@ -45,6 +49,12 @@ class ParkingNavigationController extends ChangeNotifier {
   bool _stopping = false;
   bool _closed = false;
   bool _canRetry = false;
+
+  ParkingNavigationController() {
+    _vehicleMarkerController = NavigationVehicleMarkerController(
+      onVisibilityChanged: _notifySafely,
+    );
+  }
 
   ParkingNavigationStage get stage => _stage;
   ParkingLocation? get destination => _destination;
@@ -59,6 +69,7 @@ class ParkingNavigationController extends ChangeNotifier {
   }
 
   bool get isGuidanceActive => _guidanceStarted;
+  bool get isVehicleMarkerVisible => _vehicleMarkerController.isVisible;
   bool get shouldShowPanel => _stage != ParkingNavigationStage.idle;
 
   String get statusMessage {
@@ -89,10 +100,16 @@ class ParkingNavigationController extends ChangeNotifier {
   ) async {
     if (_closed) return;
     _mapController = controller;
+    await _vehicleMarkerController.attachMapController(controller);
 
     if (_sessionInitialized) {
       await _configureCustomNavigationMap(controller, EdgeInsets.zero);
     }
+  }
+
+  Future<void> setVehicleMarkerIcon(ImageDescriptor icon) async {
+    if (_closed) return;
+    await _vehicleMarkerController.setIcon(icon);
   }
 
   Future<void> start({
@@ -149,6 +166,7 @@ class ParkingNavigationController extends ChangeNotifier {
       if (_guidanceStarted) {
         await GoogleMapsNavigator.stopGuidance();
         _guidanceStarted = false;
+        await _vehicleMarkerController.stop();
       }
       await GoogleMapsNavigator.clearDestinations();
 
@@ -182,6 +200,11 @@ class ParkingNavigationController extends ChangeNotifier {
         return;
       }
 
+      final snappedLocation = _latestRoadSnappedLocation!;
+      final initialVehicleBearing = await _resolveInitialVehicleBearing(
+        snappedLocation,
+      );
+
       await GoogleMapsNavigator.setAudioGuidance(
         NavigationAudioGuidanceSettings(
           isBluetoothAudioEnabled: true,
@@ -194,6 +217,10 @@ class ParkingNavigationController extends ChangeNotifier {
       await GoogleMapsNavigator.startGuidance();
       _guidanceStarted = true;
       _setStage(ParkingNavigationStage.guiding);
+      await _vehicleMarkerController.start(
+        position: snappedLocation,
+        initialBearing: initialVehicleBearing ?? 0,
+      );
       await recenter();
     } on SessionInitializationException catch (error) {
       _showError(ParkingNavigationMessages.forInitializationError(error.code));
@@ -250,6 +277,7 @@ class ParkingNavigationController extends ChangeNotifier {
       debugPrint('BSL IN-MAP NAVIGATION STOP ERROR: $error');
     } finally {
       _guidanceStarted = false;
+      await _vehicleMarkerController.stop();
       _destination = null;
       _navInfo = null;
       _errorMessage = null;
@@ -349,9 +377,57 @@ class ParkingNavigationController extends ChangeNotifier {
 
   void _handleRoadSnappedLocation(RoadSnappedLocationUpdatedEvent event) {
     _latestRoadSnappedLocation = event.location;
+
     if (!_locationFixCompleter.isCompleted) {
       _locationFixCompleter.complete(event.location);
     }
+
+    if (_guidanceStarted && !_closed) {
+      _vehicleMarkerController.updateLocation(event.location);
+    }
+  }
+
+  Future<double?> _resolveInitialVehicleBearing(LatLng currentLocation) async {
+    try {
+      final routeSegments = await GoogleMapsNavigator.getRouteSegments();
+      final routePath = <NavigationGeoPoint>[];
+
+      for (final segment in routeSegments) {
+        final points = segment.latLngs;
+        if (points == null) continue;
+
+        for (final point in points) {
+          if (point != null) {
+            routePath.add(_toNavigationGeoPoint(point));
+          }
+        }
+      }
+
+      return NavigationVehicleMotion.bearingAlongPath(
+        currentPosition: _toNavigationGeoPoint(currentLocation),
+        path: routePath,
+      );
+    } catch (error) {
+      debugPrint('BSL NAVIGATION INITIAL VEHICLE BEARING ERROR: $error');
+      return null;
+    }
+  }
+
+  Future<void> _refreshVehicleBearingFromRoute() async {
+    final location = _latestRoadSnappedLocation;
+    if (location == null || !_guidanceStarted || _closed) return;
+
+    final bearing = await _resolveInitialVehicleBearing(location);
+    if (bearing == null || !_guidanceStarted || _closed) return;
+
+    await _vehicleMarkerController.updatePreferredBearing(bearing);
+  }
+
+  NavigationGeoPoint _toNavigationGeoPoint(LatLng point) {
+    return NavigationGeoPoint(
+      latitude: point.latitude,
+      longitude: point.longitude,
+    );
   }
 
   void _handleNavInfo(NavInfoEvent event) {
@@ -384,6 +460,7 @@ class ParkingNavigationController extends ChangeNotifier {
   void _handleRouteChanged() {
     if (_closed || !_guidanceStarted) return;
     _setStage(ParkingNavigationStage.guiding);
+    unawaited(_refreshVehicleBearingFromRoute());
     unawaited(recenter());
   }
 
@@ -458,6 +535,7 @@ class ParkingNavigationController extends ChangeNotifier {
 
   Future<void> _performSessionCleanup() async {
     await _cancelListeners();
+    await _vehicleMarkerController.stop();
     if (!_sessionInitialized) return;
 
     try {
@@ -475,6 +553,7 @@ class ParkingNavigationController extends ChangeNotifier {
   @override
   void dispose() {
     _closed = true;
+    _vehicleMarkerController.dispose();
     _mapController = null;
     unawaited(_shutdownSession());
     super.dispose();
