@@ -44,6 +44,8 @@ gradovima i opštinama u regionu.
 - Firestore verifikacija i ispravke podataka
 - pretraga punjača, adresa i gradova
 - BSL markeri prema statusu cijene punjenja
+- ugrađena turn-by-turn navigacija od trenutne lokacije do punjača
+- BHS glasovne upute, road-snapped ruta i rotirajući BSL automobil na dark mapi
 
 ### Modularna struktura
 

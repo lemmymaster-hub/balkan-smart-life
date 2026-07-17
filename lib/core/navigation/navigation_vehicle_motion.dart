@@ -14,8 +14,8 @@ class NavigationVehiclePose {
   const NavigationVehiclePose({required this.position, required this.bearing});
 }
 
-/// Filters small GPS changes and turns road-snapped locations into smooth
-/// positions and headings suitable for the BSL navigation vehicle marker.
+/// Shared BSL filter that turns road-snapped GPS updates into smooth vehicle
+/// positions and headings suitable for every map-based navigation module.
 class NavigationVehicleMotion {
   static const double _earthRadiusMeters = 6371000;
 

@@ -4,13 +4,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
-import '../../../core/theme/bsl_design_system.dart';
+import '../theme/bsl_design_system.dart';
+import 'bsl_navigation_destination.dart';
+import 'bsl_navigation_messages.dart';
 import 'navigation_vehicle_marker_controller.dart';
-import '../models/parking_location.dart';
-import '../services/navigation_vehicle_motion.dart';
-import '../services/parking_navigation_messages.dart';
+import 'navigation_vehicle_motion.dart';
 
-enum ParkingNavigationStage {
+enum BslNavigationStage {
   idle,
   preparing,
   waitingForGps,
@@ -22,7 +22,7 @@ enum ParkingNavigationStage {
   error,
 }
 
-class ParkingNavigationController extends ChangeNotifier {
+class BslNavigationController extends ChangeNotifier {
   GoogleNavigationViewController? _mapController;
 
   StreamSubscription<RoadSnappedLocationUpdatedEvent>? _locationSubscription;
@@ -38,8 +38,8 @@ class ParkingNavigationController extends ChangeNotifier {
 
   late final NavigationVehicleMarkerController _vehicleMarkerController;
 
-  ParkingNavigationStage _stage = ParkingNavigationStage.idle;
-  ParkingLocation? _destination;
+  BslNavigationStage _stage = BslNavigationStage.idle;
+  BslNavigationDestination? _destination;
   NavInfo? _navInfo;
   String? _errorMessage;
 
@@ -50,47 +50,50 @@ class ParkingNavigationController extends ChangeNotifier {
   bool _closed = false;
   bool _canRetry = false;
 
-  ParkingNavigationController() {
+  BslNavigationController() {
     _vehicleMarkerController = NavigationVehicleMarkerController(
       onVisibilityChanged: _notifySafely,
     );
   }
 
-  ParkingNavigationStage get stage => _stage;
-  ParkingLocation? get destination => _destination;
+  BslNavigationStage get stage => _stage;
+  BslNavigationDestination? get destination => _destination;
   NavInfo? get navInfo => _navInfo;
   bool get canRetry => _canRetry;
 
   bool get isBusy {
     return _starting ||
-        _stage == ParkingNavigationStage.preparing ||
-        _stage == ParkingNavigationStage.waitingForGps ||
-        _stage == ParkingNavigationStage.calculatingRoute;
+        _stage == BslNavigationStage.preparing ||
+        _stage == BslNavigationStage.waitingForGps ||
+        _stage == BslNavigationStage.calculatingRoute;
   }
 
   bool get isGuidanceActive => _guidanceStarted;
   bool get isVehicleMarkerVisible => _vehicleMarkerController.isVisible;
-  bool get shouldShowPanel => _stage != ParkingNavigationStage.idle;
+  bool get shouldShowPanel => _stage != BslNavigationStage.idle;
 
   String get statusMessage {
     switch (_stage) {
-      case ParkingNavigationStage.idle:
+      case BslNavigationStage.idle:
         return '';
-      case ParkingNavigationStage.preparing:
+      case BslNavigationStage.preparing:
         return 'Pripremam BSL navigaciju...';
-      case ParkingNavigationStage.waitingForGps:
+      case BslNavigationStage.waitingForGps:
         return 'Tražim precizan GPS signal...';
-      case ParkingNavigationStage.calculatingRoute:
+      case BslNavigationStage.calculatingRoute:
         return 'Računam najbolju rutu...';
-      case ParkingNavigationStage.guiding:
+      case BslNavigationStage.guiding:
         return 'Navigacija je aktivna';
-      case ParkingNavigationStage.rerouting:
+      case BslNavigationStage.rerouting:
         return 'Prilagođavam rutu tvom kretanju...';
-      case ParkingNavigationStage.gpsLost:
+      case BslNavigationStage.gpsLost:
         return 'Tražim GPS signal...';
-      case ParkingNavigationStage.arrived:
-        return 'Stigli ste na odabrani parking.';
-      case ParkingNavigationStage.error:
+      case BslNavigationStage.arrived:
+        final destinationTitle = _destination?.title.trim();
+        return destinationTitle == null || destinationTitle.isEmpty
+            ? 'Stigli ste na odredište.'
+            : 'Stigli ste: $destinationTitle.';
+      case BslNavigationStage.error:
         return _errorMessage ?? 'Navigacija trenutno nije dostupna.';
     }
   }
@@ -113,35 +116,35 @@ class ParkingNavigationController extends ChangeNotifier {
   }
 
   Future<void> start({
-    required ParkingLocation parking,
+    required BslNavigationDestination destination,
     required EdgeInsets mapPadding,
   }) async {
     if (_closed || _starting || _stopping) return;
 
     final controller = _mapController;
     if (controller == null) {
-      _destination = parking;
+      _destination = destination;
       _showError('BSL mapa još nije spremna.', canRetry: true);
       return;
     }
 
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-      _destination = parking;
+      _destination = destination;
       _showError('Vođena navigacija je trenutno dostupna na Androidu.');
       return;
     }
 
-    if (_guidanceStarted && _destination?.id == parking.id) {
+    if (_guidanceStarted && _destination?.id == destination.id) {
       await recenter();
       return;
     }
 
     _starting = true;
-    _destination = parking;
+    _destination = destination;
     _navInfo = null;
     _errorMessage = null;
     _canRetry = false;
-    _setStage(ParkingNavigationStage.preparing);
+    _setStage(BslNavigationStage.preparing);
 
     try {
       final termsAccepted = await _ensureTermsAccepted();
@@ -159,7 +162,7 @@ class ParkingNavigationController extends ChangeNotifier {
 
       await _configureCustomNavigationMap(controller, mapPadding);
 
-      _setStage(ParkingNavigationStage.waitingForGps);
+      _setStage(BslNavigationStage.waitingForGps);
       await _waitForRoadSnappedLocation();
       if (_closed) return;
 
@@ -170,14 +173,17 @@ class ParkingNavigationController extends ChangeNotifier {
       }
       await GoogleMapsNavigator.clearDestinations();
 
-      _setStage(ParkingNavigationStage.calculatingRoute);
+      _setStage(BslNavigationStage.calculatingRoute);
 
       final routeStatus = await GoogleMapsNavigator.setDestinations(
         Destinations(
           waypoints: <NavigationWaypoint>[
             NavigationWaypoint.withLatLngTarget(
-              title: parking.name,
-              target: LatLng(latitude: parking.lat, longitude: parking.lng),
+              title: destination.title,
+              target: LatLng(
+                latitude: destination.latitude,
+                longitude: destination.longitude,
+              ),
             ),
           ],
           displayOptions: NavigationDisplayOptions(
@@ -194,7 +200,7 @@ class ParkingNavigationController extends ChangeNotifier {
 
       if (routeStatus != NavigationRouteStatus.statusOk) {
         _showError(
-          ParkingNavigationMessages.forRouteStatus(routeStatus),
+          BslNavigationMessages.forRouteStatus(routeStatus),
           canRetry: true,
         );
         return;
@@ -216,14 +222,14 @@ class ParkingNavigationController extends ChangeNotifier {
       await controller.setNavigationUIEnabled(false);
       await GoogleMapsNavigator.startGuidance();
       _guidanceStarted = true;
-      _setStage(ParkingNavigationStage.guiding);
+      _setStage(BslNavigationStage.guiding);
       await _vehicleMarkerController.start(
         position: snappedLocation,
         initialBearing: initialVehicleBearing ?? 0,
       );
       await recenter();
     } on SessionInitializationException catch (error) {
-      _showError(ParkingNavigationMessages.forInitializationError(error.code));
+      _showError(BslNavigationMessages.forInitializationError(error.code));
     } on TimeoutException {
       _showError(
         'Nije dobijen dovoljno precizan GPS signal. Izađi na otvoreno i pokušaj ponovo.',
@@ -242,9 +248,9 @@ class ParkingNavigationController extends ChangeNotifier {
   }
 
   Future<void> retry({required EdgeInsets mapPadding}) async {
-    final parking = _destination;
-    if (parking == null || _closed) return;
-    await start(parking: parking, mapPadding: mapPadding);
+    final destination = _destination;
+    if (destination == null || _closed) return;
+    await start(destination: destination, mapPadding: mapPadding);
   }
 
   Future<void> recenter() async {
@@ -282,7 +288,7 @@ class ParkingNavigationController extends ChangeNotifier {
       _navInfo = null;
       _errorMessage = null;
       _canRetry = false;
-      _stage = ParkingNavigationStage.idle;
+      _stage = BslNavigationStage.idle;
       _stopping = false;
       _notifySafely();
     }
@@ -434,14 +440,14 @@ class ParkingNavigationController extends ChangeNotifier {
     if (_closed || !_guidanceStarted) return;
     _navInfo = event.navInfo;
 
-    if (_stage != ParkingNavigationStage.arrived &&
-        _stage != ParkingNavigationStage.gpsLost) {
+    if (_stage != BslNavigationStage.arrived &&
+        _stage != BslNavigationStage.gpsLost) {
       switch (event.navInfo.navState) {
         case NavState.enroute:
-          _stage = ParkingNavigationStage.guiding;
+          _stage = BslNavigationStage.guiding;
           break;
         case NavState.rerouting:
-          _stage = ParkingNavigationStage.rerouting;
+          _stage = BslNavigationStage.rerouting;
           break;
         case NavState.stopped:
         case NavState.unknown:
@@ -454,12 +460,12 @@ class ParkingNavigationController extends ChangeNotifier {
 
   void _handleRerouting() {
     if (_closed || !_guidanceStarted) return;
-    _setStage(ParkingNavigationStage.rerouting);
+    _setStage(BslNavigationStage.rerouting);
   }
 
   void _handleRouteChanged() {
     if (_closed || !_guidanceStarted) return;
-    _setStage(ParkingNavigationStage.guiding);
+    _setStage(BslNavigationStage.guiding);
     unawaited(_refreshVehicleBearingFromRoute());
     unawaited(recenter());
   }
@@ -468,26 +474,26 @@ class ParkingNavigationController extends ChangeNotifier {
     if (_closed || !_guidanceStarted) return;
 
     if (event.isGpsLost || !event.isGpsValidForNavigation) {
-      _setStage(ParkingNavigationStage.gpsLost);
-    } else if (_stage == ParkingNavigationStage.gpsLost) {
-      _setStage(ParkingNavigationStage.guiding);
+      _setStage(BslNavigationStage.gpsLost);
+    } else if (_stage == BslNavigationStage.gpsLost) {
+      _setStage(BslNavigationStage.guiding);
     }
   }
 
   void _handleArrival(OnArrivalEvent event) {
     if (_closed || !_guidanceStarted) return;
-    _setStage(ParkingNavigationStage.arrived);
+    _setStage(BslNavigationStage.arrived);
   }
 
   void _showError(String message, {bool canRetry = false}) {
     if (_closed) return;
     _errorMessage = message;
     _canRetry = canRetry;
-    _stage = ParkingNavigationStage.error;
+    _stage = BslNavigationStage.error;
     _notifySafely();
   }
 
-  void _setStage(ParkingNavigationStage stage) {
+  void _setStage(BslNavigationStage stage) {
     if (_closed) return;
     _stage = stage;
     _notifySafely();

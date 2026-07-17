@@ -1,10 +1,10 @@
-import 'package:bsl_app/modules/parkiraj/services/navigation_vehicle_motion.dart';
+import 'package:bsl_app/core/navigation/navigation_vehicle_motion.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   const sarajevo = NavigationGeoPoint(latitude: 43.8563, longitude: 18.4131);
 
-  group('NavigationVehicleMotion', () {
+  group('zajednički NavigationVehicleMotion', () {
     test('računa osnovne pravce kretanja', () {
       expect(
         NavigationVehicleMotion.bearingBetween(

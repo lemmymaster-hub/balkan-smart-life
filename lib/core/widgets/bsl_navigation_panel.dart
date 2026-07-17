@@ -1,43 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
-import '../../../core/theme/bsl_design_system.dart';
-import '../controllers/parking_navigation_controller.dart';
+import '../navigation/bsl_navigation_controller.dart';
+import '../theme/bsl_design_system.dart';
 
-class ParkingNavigationPanel extends StatelessWidget {
-  const ParkingNavigationPanel({
+class BslNavigationPanel extends StatelessWidget {
+  const BslNavigationPanel({
     super.key,
     required this.stage,
     required this.statusMessage,
     required this.navInfo,
     required this.onRecenter,
+    required this.destinationIcon,
   });
 
-  final ParkingNavigationStage stage;
+  final BslNavigationStage stage;
   final String statusMessage;
   final NavInfo? navInfo;
   final VoidCallback onRecenter;
+  final IconData destinationIcon;
 
   bool get _isBusy {
-    return stage == ParkingNavigationStage.preparing ||
-        stage == ParkingNavigationStage.waitingForGps ||
-        stage == ParkingNavigationStage.calculatingRoute;
+    return stage == BslNavigationStage.preparing ||
+        stage == BslNavigationStage.waitingForGps ||
+        stage == BslNavigationStage.calculatingRoute;
   }
 
   bool get _isGuiding {
-    return stage == ParkingNavigationStage.guiding ||
-        stage == ParkingNavigationStage.rerouting ||
-        stage == ParkingNavigationStage.gpsLost;
+    return stage == BslNavigationStage.guiding ||
+        stage == BslNavigationStage.rerouting ||
+        stage == BslNavigationStage.gpsLost;
   }
 
   @override
   Widget build(BuildContext context) {
     final step = navInfo?.currentStep;
     final instruction = switch (stage) {
-      ParkingNavigationStage.rerouting ||
-      ParkingNavigationStage.gpsLost ||
-      ParkingNavigationStage.arrived ||
-      ParkingNavigationStage.error => statusMessage,
+      BslNavigationStage.rerouting ||
+      BslNavigationStage.gpsLost ||
+      BslNavigationStage.arrived ||
+      BslNavigationStage.error => statusMessage,
       _ => _instruction(step, statusMessage),
     };
     final accent = _accentColor;
@@ -48,7 +50,9 @@ class ParkingNavigationPanel extends StatelessWidget {
         Row(
           children: [
             _NavigationIcon(
-              icon: _isBusy ? null : _maneuverIcon(step?.maneuver, stage),
+              icon: _isBusy
+                  ? null
+                  : _maneuverIcon(step?.maneuver, stage, destinationIcon),
               color: accent,
             ),
             const SizedBox(width: 12),
@@ -59,9 +63,7 @@ class ParkingNavigationPanel extends StatelessWidget {
                   if (_isGuiding &&
                       navInfo?.distanceToCurrentStepMeters != null)
                     Text(
-                      _formatDistance(
-                        navInfo!.distanceToCurrentStepMeters!,
-                      ),
+                      _formatDistance(navInfo!.distanceToCurrentStepMeters!),
                       style: TextStyle(
                         color: accent,
                         fontSize: 13,
@@ -124,18 +126,18 @@ class ParkingNavigationPanel extends StatelessWidget {
 
   Color get _accentColor {
     switch (stage) {
-      case ParkingNavigationStage.gpsLost:
-      case ParkingNavigationStage.error:
+      case BslNavigationStage.gpsLost:
+      case BslNavigationStage.error:
         return BslColors.danger;
-      case ParkingNavigationStage.rerouting:
+      case BslNavigationStage.rerouting:
         return BslColors.warning;
-      case ParkingNavigationStage.arrived:
+      case BslNavigationStage.arrived:
         return BslColors.success;
-      case ParkingNavigationStage.idle:
-      case ParkingNavigationStage.preparing:
-      case ParkingNavigationStage.waitingForGps:
-      case ParkingNavigationStage.calculatingRoute:
-      case ParkingNavigationStage.guiding:
+      case BslNavigationStage.idle:
+      case BslNavigationStage.preparing:
+      case BslNavigationStage.waitingForGps:
+      case BslNavigationStage.calculatingRoute:
+      case BslNavigationStage.guiding:
         return BslColors.cyan;
     }
   }
@@ -235,20 +237,24 @@ String _formatDuration(int? seconds) {
   return '$hours h $remainingMinutes min';
 }
 
-IconData _maneuverIcon(Maneuver? maneuver, ParkingNavigationStage stage) {
-  if (stage == ParkingNavigationStage.arrived) {
-    return Icons.local_parking_rounded;
+IconData _maneuverIcon(
+  Maneuver? maneuver,
+  BslNavigationStage stage,
+  IconData destinationIcon,
+) {
+  if (stage == BslNavigationStage.arrived) {
+    return destinationIcon;
   }
-  if (stage == ParkingNavigationStage.gpsLost) {
+  if (stage == BslNavigationStage.gpsLost) {
     return Icons.gps_off_rounded;
   }
-  if (stage == ParkingNavigationStage.error) {
+  if (stage == BslNavigationStage.error) {
     return Icons.error_outline_rounded;
   }
   if (maneuver == null) return Icons.navigation_rounded;
 
   final name = maneuver.name.toLowerCase();
-  if (name.contains('destination')) return Icons.local_parking_rounded;
+  if (name.contains('destination')) return destinationIcon;
   if (name.contains('roundabout')) return Icons.roundabout_right_rounded;
   if (name.contains('uturn')) return Icons.u_turn_left_rounded;
   if (name.contains('ferry')) return Icons.directions_boat_rounded;

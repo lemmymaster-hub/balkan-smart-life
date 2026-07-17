@@ -9,6 +9,9 @@ import '../../../core/context/bsl_location_context.dart';
 import '../../../core/models/address_search_result.dart';
 import '../../../core/models/bsl_city.dart';
 import '../../../core/models/bsl_location_result.dart';
+import '../../../core/navigation/bsl_navigation_controller.dart';
+import '../../../core/navigation/bsl_navigation_destination.dart';
+import '../../../core/navigation/bsl_navigation_vehicle_asset.dart';
 import '../../../core/services/address_geocoding_service.dart';
 import '../../../core/theme/bsl_design_system.dart';
 import '../../../core/widgets/bsl_map_location_button.dart';
@@ -34,8 +37,9 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
   final AddressGeocodingService _addressService =
       const AddressGeocodingService();
   final EvChargerService _chargerService = EvChargerService();
+  final BslNavigationController _chargerNavigation = BslNavigationController();
 
-  GoogleMapViewController? _mapController;
+  GoogleNavigationViewController? _mapController;
   BslLocationContext? _locationContext;
   StreamSubscription<List<EvCharger>>? _chargersSubscription;
   late BslCity _activeCity;
@@ -58,9 +62,13 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
   int _markerBuildId = 0;
 
   final Map<String, ImageDescriptor> _markerIcons = {};
+  ImageDescriptor? _navigationVehicleMarker;
   Map<String, EvCharger> _chargerByMarkerId = const {};
+  List<Marker> _chargerMarkers = const <Marker>[];
   bool _markerSyncInProgress = false;
   bool _markerSyncPending = false;
+  bool _navigationVehicleMarkerLoadRequested = false;
+  bool? _nativeLocationIndicatorEnabled;
 
   CameraPosition get _initialCameraPosition {
     final location = _locationContext?.location;
@@ -93,12 +101,41 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
   void initState() {
     super.initState();
     _activeCity = BslCities.byName(widget.city);
+    _chargerNavigation.addListener(_handleChargerNavigationChanged);
     unawaited(_loadMapStyle());
+  }
+
+  void _handleChargerNavigationChanged() {
+    if (!mounted) return;
+
+    setState(() {
+      final destination = _chargerNavigation.destination;
+      if (_chargerNavigation.shouldShowPanel && destination != null) {
+        final destinationCharger = _chargerForId(destination.id);
+        if (destinationCharger != null) {
+          _selectedCharger = destinationCharger;
+        }
+      }
+    });
+
+    unawaited(_setMapLocationEnabled(_locationContext?.hasLocation ?? false));
+  }
+
+  EvCharger? _chargerForId(String id) {
+    for (final charger in _chargers) {
+      if (charger.id == id) return charger;
+    }
+    return null;
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+
+    if (!_navigationVehicleMarkerLoadRequested) {
+      _navigationVehicleMarkerLoadRequested = true;
+      unawaited(_loadNavigationVehicleMarker());
+    }
 
     final nextLocationContext = context.read<BslLocationContext>();
 
@@ -141,6 +178,32 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
       }
     } catch (error) {
       debugPrint('EV CHARGERS MAP STYLE ERROR: $error');
+    }
+  }
+
+  Future<void> _loadNavigationVehicleMarker() async {
+    ImageDescriptor? registeredMarker;
+
+    try {
+      registeredMarker = await BslNavigationVehicleAsset.register(context);
+
+      if (!mounted) {
+        await unregisterImage(registeredMarker);
+        return;
+      }
+
+      _navigationVehicleMarker = registeredMarker;
+      await _chargerNavigation.setVehicleMarkerIcon(registeredMarker);
+    } catch (error, stackTrace) {
+      if (registeredMarker?.registeredImageId != null) {
+        try {
+          await unregisterImage(registeredMarker!);
+        } catch (_) {
+          // Primarna greška se prijavljuje ispod.
+        }
+      }
+      debugPrint('BSL EV NAVIGATION VEHICLE ASSET ERROR: $error');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 
@@ -282,6 +345,11 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
   }
 
   Future<void> _handleLocationButton() async {
+    if (_chargerNavigation.isGuidanceActive) {
+      await _chargerNavigation.recenter();
+      return;
+    }
+
     final locationContext = _locationContext;
     if (locationContext == null) return;
 
@@ -387,6 +455,12 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
   }
 
   Future<void> _searchChargerOrAddress(String value) async {
+    if (_chargerNavigation.shouldShowPanel) {
+      _searchFocusNode.unfocus();
+      _showMessage('Zaustavi navigaciju prije nove pretrage.');
+      return;
+    }
+
     final rawQuery = value.trim();
     if (rawQuery.length < 2) return;
 
@@ -478,9 +552,13 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
     }
   }
 
-  Future<void> _onMapViewCreated(GoogleMapViewController controller) async {
+  Future<void> _onMapViewCreated(
+    GoogleNavigationViewController controller,
+  ) async {
     _mapController = controller;
+    _nativeLocationIndicatorEnabled = null;
 
+    await _chargerNavigation.attachMapController(controller);
     await _applyMapStyle(controller);
     await _setMapLocationEnabled(_locationContext?.hasLocation ?? false);
 
@@ -507,11 +585,23 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
     final controller = _mapController;
     if (controller == null) return;
 
+    final showNativeLocation =
+        enabled && !_chargerNavigation.isVehicleMarkerVisible;
+    if (_nativeLocationIndicatorEnabled == showNativeLocation) return;
+
+    _nativeLocationIndicatorEnabled = showNativeLocation;
+
     try {
-      await controller.setMyLocationEnabled(enabled);
+      await controller.setMyLocationEnabled(showNativeLocation);
     } on ViewNotFoundException {
+      if (identical(_mapController, controller)) {
+        _nativeLocationIndicatorEnabled = null;
+      }
       // Ekran je zatvoren prije završetka nativnog poziva.
     } catch (error) {
+      if (identical(_mapController, controller)) {
+        _nativeLocationIndicatorEnabled = null;
+      }
       debugPrint('EV CHARGERS LOCATION INDICATOR ERROR: $error');
     }
   }
@@ -564,24 +654,46 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
 
     try {
       _chargerByMarkerId = const {};
-      await controller.clearMarkers();
+      await _removeChargerMarkers(controller);
+
+      if (!mounted || !identical(_mapController, controller)) return;
+
       final markers = await controller.addMarkers(markerOptions);
 
       if (!mounted || !identical(_mapController, controller)) return;
 
       final chargerByMarkerId = <String, EvCharger>{};
+      final activeChargerMarkers = <Marker>[];
       for (var index = 0; index < markers.length; index++) {
         final marker = markers[index];
         if (marker != null && index < chargers.length) {
+          activeChargerMarkers.add(marker);
           chargerByMarkerId[marker.markerId] = chargers[index];
         }
       }
+      _chargerMarkers = activeChargerMarkers;
       _chargerByMarkerId = chargerByMarkerId;
     } on ViewNotFoundException {
       // Ekran je zatvoren prije završetka nativnog poziva.
     } catch (error, stackTrace) {
       debugPrint('EV CHARGERS MARKER SYNC ERROR: $error');
       debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _removeChargerMarkers(
+    GoogleNavigationViewController controller,
+  ) async {
+    final markers = _chargerMarkers;
+    _chargerMarkers = const <Marker>[];
+    if (markers.isEmpty) return;
+
+    try {
+      await controller.removeMarkers(markers);
+    } on MarkerNotFoundException {
+      // Markeri su već uklonjeni pri ponovnom kreiranju mape.
+    } on ViewNotFoundException {
+      // Ekran je zatvoren prije završetka nativnog poziva.
     }
   }
 
@@ -592,6 +704,8 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
   }
 
   Future<void> _selectChargerFromMap(EvCharger charger) async {
+    if (_chargerNavigation.shouldShowPanel) return;
+
     _userChangedMapTarget = true;
     _hasCenteredOnUser = true;
     await _animateTo(target: charger.position, zoom: 17);
@@ -599,6 +713,108 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
     if (!mounted) return;
     setState(() => _selectedCharger = charger);
     _scheduleChargerMarkerSync();
+  }
+
+  Future<void> _startChargerNavigation(EvCharger charger) async {
+    final locationContext = _locationContext;
+    if (locationContext == null) return;
+
+    if (locationContext.shouldOpenSettings) {
+      final openedSettings = await locationContext.openRelevantSettings();
+      if (openedSettings) return;
+      if (!mounted) return;
+    }
+
+    final currentLocation = locationContext.location;
+    if (currentLocation == null ||
+        currentLocation.isFromCache ||
+        !locationContext.isTracking) {
+      await locationContext.refresh();
+    }
+
+    if (!mounted) return;
+
+    if (locationContext.shouldOpenSettings) {
+      final openedSettings = await locationContext.openRelevantSettings();
+      if (openedSettings) return;
+      if (!mounted) return;
+    }
+
+    if (locationContext.location == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(locationContext.statusMessage),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _selectedCharger = charger;
+      _userChangedMapTarget = false;
+      _hasCenteredOnUser = true;
+    });
+    _searchFocusNode.unfocus();
+    _scheduleChargerMarkerSync();
+
+    await _chargerNavigation.start(
+      destination: BslNavigationDestination(
+        id: charger.id,
+        title: charger.name,
+        latitude: charger.latitude,
+        longitude: charger.longitude,
+      ),
+      mapPadding: _navigationMapPadding(),
+    );
+
+    final controller = _mapController;
+    if (controller != null) {
+      await _applyMapStyle(controller);
+    }
+  }
+
+  Future<void> _stopChargerNavigation() async {
+    await _chargerNavigation.stop();
+    final controller = _mapController;
+    if (controller != null) {
+      try {
+        await controller.setPadding(EdgeInsets.zero);
+      } on ViewNotFoundException {
+        return;
+      }
+      await _applyMapStyle(controller);
+    }
+  }
+
+  Future<void> _retryChargerNavigation() async {
+    await _chargerNavigation.retry(mapPadding: _navigationMapPadding());
+
+    final controller = _mapController;
+    if (controller != null) {
+      await _applyMapStyle(controller);
+    }
+  }
+
+  Future<void> _closeChargerCard() async {
+    if (_chargerNavigation.shouldShowPanel) {
+      await _stopChargerNavigation();
+    }
+
+    if (!mounted) return;
+
+    setState(() => _selectedCharger = null);
+    _scheduleChargerMarkerSync();
+  }
+
+  EdgeInsets _navigationMapPadding() {
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    return EdgeInsets.fromLTRB(
+      14 * pixelRatio,
+      170 * pixelRatio,
+      14 * pixelRatio,
+      285 * pixelRatio,
+    );
   }
 
   String _markerKey(EvCharger charger, {required bool selected}) {
@@ -644,9 +860,12 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
   }
 
   Future<void> _disposeMapResources(
-    GoogleMapViewController? controller,
+    GoogleNavigationViewController? controller,
     List<ImageDescriptor> images,
   ) async {
+    _chargerMarkers = const <Marker>[];
+    _chargerByMarkerId = const {};
+
     if (controller != null) {
       try {
         await controller.clearMarkers();
@@ -664,11 +883,18 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
   void dispose() {
     _chargersSubscription?.cancel();
     _locationContext?.removeListener(_handleLocationContextChanged);
+    _chargerNavigation.removeListener(_handleChargerNavigationChanged);
+    _chargerNavigation.dispose();
     _chargerService.dispose();
     final controller = _mapController;
     _mapController = null;
     final markerImages = List<ImageDescriptor>.of(_markerIcons.values);
+    final navigationVehicleMarker = _navigationVehicleMarker;
+    if (navigationVehicleMarker != null) {
+      markerImages.add(navigationVehicleMarker);
+    }
     _markerIcons.clear();
+    _navigationVehicleMarker = null;
     unawaited(_disposeMapResources(controller, markerImages));
     _searchController.dispose();
     _searchFocusNode.dispose();
@@ -679,21 +905,33 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
   Widget build(BuildContext context) {
     final locationContext = _locationContext;
     final hasUserLocation = locationContext?.hasLocation ?? false;
-    final hasSelectedCharger = _selectedCharger != null;
+    final selectedCharger = _selectedCharger;
+    final hasSelectedCharger = selectedCharger != null;
+    final navigationVisible =
+        selectedCharger != null &&
+        _chargerNavigation.shouldShowPanel &&
+        _chargerNavigation.destination?.id == selectedCharger.id;
+    final isSelectedDestinationNavigating =
+        selectedCharger != null &&
+        _chargerNavigation.isGuidanceActive &&
+        _chargerNavigation.destination?.id == selectedCharger.id;
+    final selectedCardOffset = navigationVisible ? 302.0 : 254.0;
 
     return Scaffold(
       backgroundColor: BslColors.bgDark,
       body: Stack(
         children: [
-          GoogleMapsMapView(
+          GoogleMapsNavigationView(
             onViewCreated: (controller) {
               unawaited(_onMapViewCreated(controller));
             },
             initialCameraPosition: _initialCameraPosition,
+            initialNavigationUIEnabledPreference:
+                NavigationUIEnabledPreference.disabled,
             initialMapColorScheme: MapColorScheme.dark,
             initialZoomControlsEnabled: false,
             initialMapToolbarEnabled: false,
-            initialCompassEnabled: true,
+            initialMapType: MapType.normal,
             onMarkerClicked: _handleChargerMarkerTap,
           ),
           Positioned(
@@ -734,7 +972,7 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
             duration: BslDurations.normal,
             curve: Curves.easeOutCubic,
             right: 16,
-            bottom: hasSelectedCharger ? 254 : 28,
+            bottom: hasSelectedCharger ? selectedCardOffset : 28,
             child: BslMapLocationButton(
               isLoading: locationContext?.isLoading ?? false,
               hasLocation: hasUserLocation,
@@ -746,7 +984,7 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
             duration: BslDurations.normal,
             curve: Curves.easeOutCubic,
             left: 14,
-            bottom: hasSelectedCharger ? 252 : 18,
+            bottom: hasSelectedCharger ? selectedCardOffset - 2 : 18,
             child: const EvOsmAttribution(),
           ),
           AnimatedPositioned(
@@ -754,7 +992,7 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
             curve: Curves.easeOutCubic,
             left: 0,
             right: 0,
-            bottom: hasSelectedCharger ? 0 : -250,
+            bottom: hasSelectedCharger ? 0 : -340,
             child: AnimatedOpacity(
               duration: BslDurations.fast,
               opacity: hasSelectedCharger ? 1 : 0,
@@ -764,9 +1002,35 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
                     ? const SizedBox.shrink()
                     : EvChargerBottomCard(
                         charger: _selectedCharger!,
+                        navigationVisible: navigationVisible,
+                        navigationActive: isSelectedDestinationNavigating,
+                        navigationBusy:
+                            _chargerNavigation.isBusy &&
+                            _chargerNavigation.destination?.id ==
+                                _selectedCharger!.id,
+                        navigationStage: _chargerNavigation.stage,
+                        navigationStatusMessage:
+                            _chargerNavigation.statusMessage,
+                        navigationInfo: _chargerNavigation.navInfo,
+                        navigationCanRetry: _chargerNavigation.canRetry,
+                        onRecenter: () {
+                          unawaited(_chargerNavigation.recenter());
+                        },
+                        onNavigate: () {
+                          if (!navigationVisible) {
+                            unawaited(
+                              _startChargerNavigation(_selectedCharger!),
+                            );
+                          } else if (_chargerNavigation.stage ==
+                                  BslNavigationStage.error &&
+                              _chargerNavigation.canRetry) {
+                            unawaited(_retryChargerNavigation());
+                          } else {
+                            unawaited(_stopChargerNavigation());
+                          }
+                        },
                         onClose: () {
-                          setState(() => _selectedCharger = null);
-                          _scheduleChargerMarkerSync();
+                          unawaited(_closeChargerCard());
                         },
                       ),
               ),

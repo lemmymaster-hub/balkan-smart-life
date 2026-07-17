@@ -11,15 +11,17 @@ import '../../../core/context/bsl_location_context.dart';
 import '../../../core/models/address_search_result.dart';
 import '../../../core/models/bsl_city.dart';
 import '../../../core/models/bsl_location_result.dart';
+import '../../../core/navigation/bsl_navigation_controller.dart';
+import '../../../core/navigation/bsl_navigation_destination.dart';
+import '../../../core/navigation/bsl_navigation_vehicle_asset.dart';
 import '../../../core/services/address_geocoding_service.dart';
 import '../../../core/theme/bsl_design_system.dart';
 import '../../../core/widgets/bsl_map_location_button.dart';
 import '../../../core/widgets/bsl_module_top_bar.dart';
+import '../../../core/widgets/bsl_navigation_panel.dart';
 import '../../../core/widgets/bsl_progress_bar.dart';
-import '../controllers/parking_navigation_controller.dart';
 import '../models/parking_location.dart';
 import '../services/parking_service.dart';
-import '../widgets/parking_navigation_panel.dart';
 
 class ParkingMapScreen extends StatefulWidget {
   final String city;
@@ -31,19 +33,13 @@ class ParkingMapScreen extends StatefulWidget {
 }
 
 class _ParkingMapScreenState extends State<ParkingMapScreen> {
-  static const String _navigationVehicleMarkerAsset =
-      'assets/markers/bsl_navigation_car_marker.png';
-  static const double _navigationVehicleMarkerWidth = 32;
-  static const double _navigationVehicleMarkerHeight = 68;
-
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
 
   final ParkingService _parkingService = ParkingService();
   final AddressGeocodingService _addressGeocodingService =
       const AddressGeocodingService();
-  final ParkingNavigationController _parkingNavigation =
-      ParkingNavigationController();
+  final BslNavigationController _parkingNavigation = BslNavigationController();
 
   GoogleNavigationViewController? _mapController;
   ImageDescriptor? _greenParkingMarker;
@@ -115,10 +111,20 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
     setState(() {
       final destination = _parkingNavigation.destination;
       if (_parkingNavigation.shouldShowPanel && destination != null) {
-        _selectedParking = destination;
+        final destinationParking = _parkingForId(destination.id);
+        if (destinationParking != null) {
+          _selectedParking = destinationParking;
+        }
       }
     });
     unawaited(_setMapLocationEnabled(_locationContext?.hasLocation ?? false));
+  }
+
+  ParkingLocation? _parkingForId(String id) {
+    for (final parking in _parkings) {
+      if (parking.id == id) return parking;
+    }
+    return null;
   }
 
   @override
@@ -238,18 +244,7 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
     ImageDescriptor? registeredMarker;
 
     try {
-      final imageConfiguration = createLocalImageConfiguration(context);
-      final imageKey = await const AssetImage(
-        _navigationVehicleMarkerAsset,
-      ).obtainKey(imageConfiguration);
-      final assetData = await imageKey.bundle.load(imageKey.name);
-
-      registeredMarker = await registerBitmapImage(
-        bitmap: assetData,
-        imagePixelRatio: imageKey.scale,
-        width: _navigationVehicleMarkerWidth,
-        height: _navigationVehicleMarkerHeight,
-      );
+      registeredMarker = await BslNavigationVehicleAsset.register(context);
 
       if (!mounted) {
         await unregisterImage(registeredMarker);
@@ -580,7 +575,12 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
     _scheduleParkingMarkerSync();
 
     await _parkingNavigation.start(
-      parking: parking,
+      destination: BslNavigationDestination(
+        id: parking.id,
+        title: parking.name,
+        latitude: parking.lat,
+        longitude: parking.lng,
+      ),
       mapPadding: _navigationMapPadding(),
     );
 
@@ -788,9 +788,7 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
 
     final addressLocation = address.location;
 
-    debugPrint(
-      'BSL SEARCH ADDRESS MATCH: ${address.label} $addressLocation',
-    );
+    debugPrint('BSL SEARCH ADDRESS MATCH: ${address.label} $addressLocation');
 
     _userChangedMapTarget = true;
     _hasCenteredOnUser = true;
@@ -1311,7 +1309,7 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
                               _startParkingNavigation(_selectedParking!),
                             );
                           } else if (_parkingNavigation.stage ==
-                                  ParkingNavigationStage.error &&
+                                  BslNavigationStage.error &&
                               _parkingNavigation.canRetry) {
                             unawaited(_retryParkingNavigation());
                           } else {
@@ -1339,7 +1337,7 @@ class _ParkingBottomCard extends StatelessWidget {
   final bool navigationVisible;
   final bool navigationActive;
   final bool navigationBusy;
-  final ParkingNavigationStage navigationStage;
+  final BslNavigationStage navigationStage;
   final String navigationStatusMessage;
   final NavInfo? navigationInfo;
   final bool navigationCanRetry;
@@ -1370,11 +1368,10 @@ class _ParkingBottomCard extends StatelessWidget {
         : 1 - (parking.freeSpots / parking.totalSpots);
     final navigationNeedsRetry =
         navigationVisible &&
-        navigationStage == ParkingNavigationStage.error &&
+        navigationStage == BslNavigationStage.error &&
         navigationCanRetry;
     final navigationArrived =
-        navigationVisible &&
-        navigationStage == ParkingNavigationStage.arrived;
+        navigationVisible && navigationStage == BslNavigationStage.arrived;
     late final IconData navigationActionIcon;
     late final String navigationActionLabel;
 
@@ -1442,12 +1439,13 @@ class _ParkingBottomCard extends StatelessWidget {
           AnimatedSwitcher(
             duration: BslDurations.normal,
             child: navigationVisible
-                ? ParkingNavigationPanel(
+                ? BslNavigationPanel(
                     key: const ValueKey('parking-navigation'),
                     stage: navigationStage,
                     statusMessage: navigationStatusMessage,
                     navInfo: navigationInfo,
                     onRecenter: onRecenter,
+                    destinationIcon: Icons.local_parking_rounded,
                   )
                 : Column(
                     key: const ValueKey('parking-availability'),
@@ -1457,8 +1455,7 @@ class _ParkingBottomCard extends StatelessWidget {
                         value: occupancyPercent,
                         label: 'Popunjenost',
                         totalSegments: parking.totalSpots,
-                        filledSegments:
-                            parking.totalSpots - parking.freeSpots,
+                        filledSegments: parking.totalSpots - parking.freeSpots,
                         subtitle:
                             '${parking.freeSpots} slobodnih od ${parking.totalSpots} mjesta',
                       ),

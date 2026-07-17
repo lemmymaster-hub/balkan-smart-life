@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
-import '../services/navigation_vehicle_motion.dart';
+import 'navigation_vehicle_motion.dart';
 
 class NavigationVehicleMarkerController {
   static const Duration _animationInterval = Duration(milliseconds: 80);
