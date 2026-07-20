@@ -7,6 +7,8 @@ import '../../../core/navigation/bsl_navigation_controller.dart';
 import '../../../core/theme/bsl_design_system.dart';
 import '../../../core/widgets/bsl_navigation_panel.dart';
 import '../models/ev_charger.dart';
+import '../models/ev_charging_session.dart';
+import 'ev_charging_session_panel.dart';
 
 class EvChargerBottomCard extends StatelessWidget {
   final EvCharger charger;
@@ -17,8 +19,13 @@ class EvChargerBottomCard extends StatelessWidget {
   final String navigationStatusMessage;
   final NavInfo? navigationInfo;
   final bool navigationCanRetry;
+  final EvChargingSession? chargingSession;
+  final DateTime chargingNow;
+  final bool chargingTrackingAvailable;
   final VoidCallback onRecenter;
   final VoidCallback onNavigate;
+  final VoidCallback onTrackCharging;
+  final VoidCallback onChargingAction;
   final VoidCallback onClose;
 
   const EvChargerBottomCard({
@@ -31,8 +38,13 @@ class EvChargerBottomCard extends StatelessWidget {
     required this.navigationStatusMessage,
     required this.navigationInfo,
     required this.navigationCanRetry,
+    required this.chargingSession,
+    required this.chargingNow,
+    required this.chargingTrackingAvailable,
     required this.onRecenter,
     required this.onNavigate,
+    required this.onTrackCharging,
+    required this.onChargingAction,
     required this.onClose,
   });
 
@@ -56,6 +68,9 @@ class EvChargerBottomCard extends StatelessWidget {
         navigationCanRetry;
     final navigationArrived =
         navigationVisible && navigationStage == BslNavigationStage.arrived;
+    final visibleChargingSession = chargingSession?.chargerId == charger.id
+        ? chargingSession
+        : null;
     late final IconData navigationActionIcon;
     late final String navigationActionLabel;
 
@@ -160,6 +175,14 @@ class EvChargerBottomCard extends StatelessWidget {
                       onRecenter: onRecenter,
                       destinationIcon: Icons.ev_station_rounded,
                     )
+                  : visibleChargingSession != null
+                  ? EvChargingSessionPanel(
+                      key: ValueKey(
+                        'ev-charging-session-${visibleChargingSession.id}',
+                      ),
+                      session: visibleChargingSession,
+                      now: chargingNow,
+                    )
                   : Column(
                       key: const ValueKey('ev-charger-details'),
                       mainAxisSize: MainAxisSize.min,
@@ -226,16 +249,55 @@ class EvChargerBottomCard extends StatelessWidget {
                     ),
             ),
             const SizedBox(height: 14),
-            _EvNavigationButton(
-              icon: navigationActionIcon,
-              label: navigationActionLabel,
-              onTap: navigationBusy ? null : onNavigate,
-              danger:
-                  navigationVisible &&
-                  !navigationNeedsRetry &&
-                  !navigationArrived &&
-                  navigationActive,
-            ),
+            if (navigationVisible)
+              _EvActionButton(
+                icon: navigationActionIcon,
+                label: navigationActionLabel,
+                onTap: navigationBusy ? null : onNavigate,
+                color:
+                    !navigationNeedsRetry &&
+                        !navigationArrived &&
+                        navigationActive
+                    ? BslColors.danger
+                    : BslColors.cyan,
+              )
+            else if (visibleChargingSession != null)
+              _EvActionButton(
+                icon: _chargingActionIcon(visibleChargingSession),
+                label: _chargingActionLabel(visibleChargingSession),
+                onTap:
+                    visibleChargingSession.source ==
+                        EvChargingSessionSource.estimated
+                    ? onChargingAction
+                    : null,
+                color: visibleChargingSession.isActive
+                    ? BslColors.warning
+                    : BslColors.cyan,
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: _EvActionButton(
+                      icon: navigationActionIcon,
+                      label: navigationActionLabel,
+                      onTap: navigationBusy ? null : onNavigate,
+                      color: BslColors.cyan,
+                    ),
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: _EvActionButton(
+                      icon: Icons.battery_charging_full_rounded,
+                      label: chargingTrackingAvailable
+                          ? 'Prati punjenje'
+                          : 'Snaga nepoznata',
+                      onTap: chargingTrackingAvailable ? onTrackCharging : null,
+                      color: BslColors.success,
+                    ),
+                  ),
+                ],
+              ),
           ],
         ),
       ),
@@ -358,23 +420,21 @@ class EvChargerErrorCard extends StatelessWidget {
   }
 }
 
-class _EvNavigationButton extends StatelessWidget {
+class _EvActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
-  final bool danger;
+  final Color color;
 
-  const _EvNavigationButton({
+  const _EvActionButton({
     required this.icon,
     required this.label,
     required this.onTap,
-    required this.danger,
+    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = danger ? BslColors.danger : BslColors.cyan;
-
     return AnimatedOpacity(
       duration: BslDurations.fast,
       opacity: onTap == null ? 0.60 : 1,
@@ -390,19 +450,25 @@ class _EvNavigationButton extends StatelessWidget {
               color: color.withValues(alpha: 0.17),
               borderRadius: BorderRadius.circular(BslRadius.medium),
               border: Border.all(color: color.withValues(alpha: 0.40)),
-              boxShadow: danger ? null : BslShadows.cyanGlow(alpha: 0.08),
+              boxShadow: color == BslColors.danger
+                  ? null
+                  : BslShadows.cyanGlow(alpha: 0.08),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(icon, color: color, size: 19),
                 const SizedBox(width: 7),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
               ],
@@ -479,4 +545,21 @@ String _formatNumber(double value) {
   return value == value.roundToDouble()
       ? value.toStringAsFixed(0)
       : value.toStringAsFixed(1);
+}
+
+IconData _chargingActionIcon(EvChargingSession session) {
+  if (session.status == EvChargingSessionStatus.completed) {
+    return Icons.check_circle_outline_rounded;
+  }
+  if (session.status == EvChargingSessionStatus.failed) {
+    return Icons.error_outline_rounded;
+  }
+  return Icons.stop_circle_outlined;
+}
+
+String _chargingActionLabel(EvChargingSession session) {
+  if (session.source == EvChargingSessionSource.operatorLive) {
+    return session.isActive ? 'Sesija se prati' : 'Podaci operatora';
+  }
+  return session.isActive ? 'Završi praćenje' : 'Zatvori sažetak';
 }

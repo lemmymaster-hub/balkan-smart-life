@@ -46,6 +46,9 @@ gradovima i opštinama u regionu.
 - BSL markeri prema statusu cijene punjenja
 - ugrađena turn-by-turn navigacija od trenutne lokacije do punjača
 - BHS glasovne upute, road-snapped ruta i rotirajući BSL automobil na dark mapi
+- lokalno, trajno praćenje procijenjenog punjenja kada je poznata snaga priključka
+- read-only Firestore kanal za buduće stvarne sesijske podatke operatora
+- jasno razdvajanje procjene od operatorovog mjerenja; plaćanje još nije uključeno
 
 ### Modularna struktura
 

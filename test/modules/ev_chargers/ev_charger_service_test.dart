@@ -166,6 +166,31 @@ void main() {
       expect(query, contains('${city.latitude},${city.longitude}'));
       expect(query, contains('access'));
     });
+
+    test('koristi ukupnu OSM snagu kada socket izlaz nije naveden', () {
+      final chargers = EvChargerService.parseOverpassResponse('''
+{
+  "elements": [
+    {
+      "type": "node",
+      "id": 404,
+      "lat": 44.773,
+      "lon": 17.190,
+      "tags": {
+        "amenity": "charging_station",
+        "capacity": "3",
+        "charging_station:output": "22 kW"
+      }
+    }
+  ]
+}
+''', requestedCity: BslCities.byName('Banja Luka'));
+
+      expect(chargers.single.connectors.single.type, 'Nazivna snaga');
+      expect(chargers.single.connectors.single.powerKw, 22);
+      expect(chargers.single.connectors.single.count, 3);
+      expect(chargers.single.maxPowerKw, 22);
+    });
   });
 
   group('EvChargerMapPolicy', () {

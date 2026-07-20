@@ -282,8 +282,42 @@ class EvCharger {
       );
     }
 
+    final stationPower = _firstPowerKw([
+      tags['charging_station:output'],
+      tags['output'],
+      tags['max_power'],
+      tags['charging_station:max_power'],
+    ]);
+
+    if (stationPower != null) {
+      for (var index = 0; index < connectors.length; index++) {
+        final connector = connectors[index];
+        if (connector.powerKw == null) {
+          connectors[index] = connector.copyWith(powerKw: stationPower);
+        }
+      }
+    }
+
+    if (connectors.isEmpty && stationPower != null) {
+      connectors.add(
+        EvConnector(
+          type: 'Nazivna snaga',
+          count: _asInt(tags['capacity']),
+          powerKw: stationPower,
+        ),
+      );
+    }
+
     connectors.sort((first, second) => first.type.compareTo(second.type));
     return List<EvConnector>.unmodifiable(connectors);
+  }
+
+  static double? _firstPowerKw(List<Object?> values) {
+    for (final value in values) {
+      final power = _powerKw(value);
+      if (power != null) return power;
+    }
+    return null;
   }
 
   static String _connectorLabel(String rawType) {

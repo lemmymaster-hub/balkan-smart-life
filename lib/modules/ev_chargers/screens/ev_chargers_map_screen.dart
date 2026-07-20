@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
@@ -16,9 +17,12 @@ import '../../../core/services/address_geocoding_service.dart';
 import '../../../core/theme/bsl_design_system.dart';
 import '../../../core/widgets/bsl_map_location_button.dart';
 import '../../../core/widgets/bsl_module_top_bar.dart';
+import '../controllers/ev_charging_session_controller.dart';
 import '../models/ev_charger.dart';
 import '../models/ev_charger_map_policy.dart';
+import '../models/ev_charging_session.dart';
 import '../services/ev_charger_service.dart';
+import '../services/ev_charging_live_session_service.dart';
 import '../widgets/ev_charger_map_overlays.dart';
 import '../widgets/ev_charger_marker_factory.dart';
 
@@ -38,10 +42,15 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
       const AddressGeocodingService();
   final EvChargerService _chargerService = EvChargerService();
   final BslNavigationController _chargerNavigation = BslNavigationController();
+  final EvChargingSessionController _chargingSession =
+      EvChargingSessionController();
+  final EvChargingLiveSessionService _liveChargingSessionService =
+      EvChargingLiveSessionService();
 
   GoogleNavigationViewController? _mapController;
   BslLocationContext? _locationContext;
   StreamSubscription<List<EvCharger>>? _chargersSubscription;
+  StreamSubscription<EvChargingSession?>? _liveChargingSessionSubscription;
   late BslCity _activeCity;
 
   String? _darkMapStyle;
@@ -69,6 +78,7 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
   bool _markerSyncPending = false;
   bool _navigationVehicleMarkerLoadRequested = false;
   bool? _nativeLocationIndicatorEnabled;
+  String? _lastChargingSessionId;
 
   CameraPosition get _initialCameraPosition {
     final location = _locationContext?.location;
@@ -102,7 +112,52 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
     super.initState();
     _activeCity = BslCities.byName(widget.city);
     _chargerNavigation.addListener(_handleChargerNavigationChanged);
+    _chargingSession.addListener(_handleChargingSessionChanged);
     unawaited(_loadMapStyle());
+    unawaited(_initializeChargingSessions());
+  }
+
+  Future<void> _initializeChargingSessions() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+
+    try {
+      await _chargingSession.initialize(userId: userId);
+    } catch (error, stackTrace) {
+      debugPrint('EV CHARGING SESSION RESTORE ERROR: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    if (userId == 'guest') return;
+
+    _liveChargingSessionSubscription = _liveChargingSessionService
+        .watchForUser(userId)
+        .listen(
+          _chargingSession.setLiveSession,
+          onError: (Object error, StackTrace stackTrace) {
+            debugPrint('EV CHARGING LIVE SESSION ERROR: $error');
+            debugPrintStack(stackTrace: stackTrace);
+          },
+        );
+  }
+
+  void _handleChargingSessionChanged() {
+    if (!mounted) return;
+
+    final session = _chargingSession.displaySession;
+    final sessionCharger = session == null
+        ? null
+        : _chargerForId(session.chargerId);
+    final shouldSelectSession =
+        session?.isActive == true && session?.id != _lastChargingSessionId;
+    _lastChargingSessionId = session?.id;
+
+    setState(() {
+      if (sessionCharger != null && shouldSelectSession) {
+        _selectedCharger = sessionCharger;
+      }
+    });
+
+    if (sessionCharger != null) _scheduleChargerMarkerSync();
   }
 
   void _handleChargerNavigationChanged() {
@@ -237,6 +292,14 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
                 _selectedCharger = _firstWhereOrNull(
                   chargers,
                   (charger) => charger.id == selectedId,
+                );
+              }
+
+              final chargingSession = _chargingSession.displaySession;
+              if (_selectedCharger == null && chargingSession != null) {
+                _selectedCharger = _firstWhereOrNull(
+                  chargers,
+                  (charger) => charger.id == chargingSession.chargerId,
                 );
               }
             });
@@ -715,7 +778,195 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
     _scheduleChargerMarkerSync();
   }
 
+  List<EvConnector> _trackableConnectors(EvCharger charger) {
+    final byIdentity = <String, EvConnector>{};
+
+    for (final connector in charger.connectors) {
+      final powerKw = connector.powerKw;
+      if (powerKw == null || powerKw <= 0) continue;
+      byIdentity['${connector.type}|$powerKw'] = connector;
+    }
+
+    return byIdentity.values.toList(growable: false);
+  }
+
+  Future<void> _startChargingTracking(EvCharger charger) async {
+    if (_chargerNavigation.shouldShowPanel) {
+      _showMessage('Prvo završi navigaciju, zatim pokreni praćenje punjenja.');
+      return;
+    }
+
+    final activeSession = _chargingSession.activeSession;
+    if (activeSession != null) {
+      _showMessage(
+        activeSession.source == EvChargingSessionSource.operatorLive
+            ? 'Operator već prijavljuje aktivnu sesiju.'
+            : 'Jedno punjenje se već prati.',
+      );
+      return;
+    }
+
+    final connectors = _trackableConnectors(charger);
+    if (connectors.isEmpty) {
+      _showMessage('Za ovaj punjač nije potvrđena snaga potrebna za procjenu.');
+      return;
+    }
+
+    EvConnector? connector;
+    if (connectors.length == 1) {
+      connector = connectors.single;
+    } else {
+      connector = await showModalBottomSheet<EvConnector>(
+        context: context,
+        backgroundColor: BslColors.bgDark,
+        showDragHandle: true,
+        builder: (sheetContext) {
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Izaberi priključak',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Procjena će koristiti nazivnu snagu izabranog priključka.',
+                    style: TextStyle(
+                      color: BslColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ...connectors.map(
+                    (candidate) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const CircleAvatar(
+                        backgroundColor: Color(0x332FE6FF),
+                        child: Icon(
+                          Icons.electrical_services_rounded,
+                          color: BslColors.cyan,
+                        ),
+                      ),
+                      title: Text(
+                        candidate.type,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '${_formatPower(candidate.powerKw!)} kW',
+                        style: const TextStyle(color: BslColors.textSecondary),
+                      ),
+                      trailing: const Icon(
+                        Icons.chevron_right_rounded,
+                        color: BslColors.cyan,
+                      ),
+                      onTap: () => Navigator.pop(sheetContext, candidate),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    if (!mounted) return;
+    final selectedConnector = connector;
+    if (selectedConnector == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF111A33),
+          title: const Text('Pokrenuti BSL praćenje?'),
+          content: Text(
+            'Prvo pokreni fizičko punjenje na stanici ili u aplikaciji '
+            'operatora. BSL će zatim procjenjivati energiju prema nazivnoj '
+            'snazi od ${_formatPower(selectedConnector.powerKw!)} kW. Ovo '
+            'dugme ne '
+            'uključuje punjač i nije mjerenje uživo.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Odustani'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.battery_charging_full_rounded),
+              label: const Text('Počni praćenje'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || confirmed != true) return;
+
+    try {
+      await _chargingSession.startEstimated(
+        charger: charger,
+        connector: selectedConnector,
+      );
+    } on EvChargingSessionException catch (error) {
+      if (mounted) _showMessage(error.message);
+    }
+  }
+
+  Future<void> _handleChargingAction(EvChargingSession session) async {
+    if (!session.isEstimated) return;
+
+    if (!session.isActive) {
+      await _chargingSession.dismissEstimated();
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF111A33),
+          title: const Text('Završiti praćenje?'),
+          content: const Text(
+            'BSL će sačuvati završnu procjenu trajanja i isporučene energije. '
+            'Zaustavljanje praćenja ne šalje komandu fizičkom punjaču.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Nastavi pratiti'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Završi'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || confirmed != true) return;
+    await _chargingSession.completeEstimated();
+  }
+
   Future<void> _startChargerNavigation(EvCharger charger) async {
+    if (_chargingSession.activeSession != null) {
+      _showMessage('Završi aktivno praćenje punjenja prije navigacije.');
+      return;
+    }
+
     final locationContext = _locationContext;
     if (locationContext == null) return;
 
@@ -882,9 +1133,12 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
   @override
   void dispose() {
     _chargersSubscription?.cancel();
+    _liveChargingSessionSubscription?.cancel();
     _locationContext?.removeListener(_handleLocationContextChanged);
     _chargerNavigation.removeListener(_handleChargerNavigationChanged);
+    _chargingSession.removeListener(_handleChargingSessionChanged);
     _chargerNavigation.dispose();
+    _chargingSession.dispose();
     _chargerService.dispose();
     final controller = _mapController;
     _mapController = null;
@@ -915,7 +1169,20 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
         selectedCharger != null &&
         _chargerNavigation.isGuidanceActive &&
         _chargerNavigation.destination?.id == selectedCharger.id;
-    final selectedCardOffset = navigationVisible ? 302.0 : 254.0;
+    final displayedChargingSession = _chargingSession.displaySession;
+    final selectedChargingSession =
+        selectedCharger != null &&
+            displayedChargingSession?.chargerId == selectedCharger.id
+        ? displayedChargingSession
+        : null;
+    final chargingTrackingAvailable =
+        selectedCharger != null &&
+        _trackableConnectors(selectedCharger).isNotEmpty;
+    final selectedCardOffset = navigationVisible
+        ? 302.0
+        : selectedChargingSession != null
+        ? 384.0
+        : 254.0;
 
     return Scaffold(
       backgroundColor: BslColors.bgDark,
@@ -992,7 +1259,7 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
             curve: Curves.easeOutCubic,
             left: 0,
             right: 0,
-            bottom: hasSelectedCharger ? 0 : -340,
+            bottom: hasSelectedCharger ? 0 : -460,
             child: AnimatedOpacity(
               duration: BslDurations.fast,
               opacity: hasSelectedCharger ? 1 : 0,
@@ -1013,6 +1280,9 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
                             _chargerNavigation.statusMessage,
                         navigationInfo: _chargerNavigation.navInfo,
                         navigationCanRetry: _chargerNavigation.canRetry,
+                        chargingSession: selectedChargingSession,
+                        chargingNow: _chargingSession.currentTime,
+                        chargingTrackingAvailable: chargingTrackingAvailable,
                         onRecenter: () {
                           unawaited(_chargerNavigation.recenter());
                         },
@@ -1027,6 +1297,15 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
                             unawaited(_retryChargerNavigation());
                           } else {
                             unawaited(_stopChargerNavigation());
+                          }
+                        },
+                        onTrackCharging: () {
+                          unawaited(_startChargingTracking(_selectedCharger!));
+                        },
+                        onChargingAction: () {
+                          final session = selectedChargingSession;
+                          if (session != null) {
+                            unawaited(_handleChargingAction(session));
                           }
                         },
                         onClose: () {
@@ -1047,4 +1326,10 @@ T? _firstWhereOrNull<T>(Iterable<T> values, bool Function(T value) test) {
     if (test(value)) return value;
   }
   return null;
+}
+
+String _formatPower(double value) {
+  return value == value.roundToDouble()
+      ? value.toStringAsFixed(0)
+      : value.toStringAsFixed(1);
 }
