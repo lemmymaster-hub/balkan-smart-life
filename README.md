@@ -50,6 +50,16 @@ gradovima i opštinama u regionu.
 - read-only Firestore kanal za buduće stvarne sesijske podatke operatora
 - jasno razdvajanje procjene od operatorovog mjerenja; plaćanje još nije uključeno
 
+### BSL Novčanik Demo
+
+- interni investicijski UI/UX prototip bez stvarne naplate
+- više maskiranih demo kartica i izbor kartice za svako plaćanje
+- simulirani unos kartice, tokenizacija i 3-D Secure potvrda
+- demo plaćanje BSL usluga, QR plaćanje i NFC "prisloni telefon" tok
+- stvarna sistemska biometrijska potvrda identiteta prije demo plaćanja
+- lokalna istorija simuliranih transakcija po korisniku
+- puni broj kartice i CVV se ne čuvaju u modelu, Firestoreu ili lokalnoj pohrani
+
 ### Modularna struktura
 
 - odvojeni moduli, modeli i servisni slojevi
@@ -126,7 +136,8 @@ Aktivna razvojna grana i izvor istine je `main`. Nove funkcionalnosti trebaju
 se razvijati u kratkotrajnim granama i vraćati u `main` nakon provjere.
 
 Planirani moduli uključuju gradski prevoz, taxi, turističke informacije,
-lokalne vijesti, digitalni novčanik, prijavu problema, nagrade i AI asistenta.
+lokalne vijesti, produkcijsku payment integraciju novčanika, prijavu problema,
+nagrade i AI asistenta.
 
 ## Autor
 

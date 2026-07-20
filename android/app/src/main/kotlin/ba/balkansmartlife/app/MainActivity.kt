@@ -3,10 +3,10 @@ package ba.balkansmartlife.app
 import android.content.Context
 import android.content.res.Configuration
 import android.os.LocaleList
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import java.util.Locale
 
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
     override fun attachBaseContext(newBase: Context) {
         val locale = preferredBhsLocale(newBase)
         Locale.setDefault(locale)

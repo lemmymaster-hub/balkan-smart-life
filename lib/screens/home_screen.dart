@@ -11,6 +11,7 @@ import '../core/services/home_tile_order_service.dart';
 import '../core/widgets/bsl_reorderable_grid.dart';
 import '../modules/ev_chargers/screens/ev_chargers_map_screen.dart';
 import '../modules/parkiraj/screens/parkiraj_home_screen.dart';
+import '../modules/wallet/screens/wallet_home_screen.dart';
 import '../services/weather_service.dart';
 import '../widgets/animated_logo.dart';
 import '../widgets/home_layout_editor.dart';
@@ -782,6 +783,16 @@ class _MetroTileState extends State<MetroTile>
 
               if (widget.item.id == HomeModuleIds.weather) {
                 await widget.onOpenWeather?.call();
+                return;
+              }
+
+              if (widget.item.id == HomeModuleIds.wallet) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const WalletHomeScreen(),
+                  ),
+                );
                 return;
               }
 

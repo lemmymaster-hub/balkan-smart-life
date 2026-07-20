@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>BSL koristi tvoju lokaciju dok je aplikacija otvorena kako bi prikazao najbliže parkinge i druge usluge u blizini.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>BSL koristi Face ID isključivo za potvrdu identiteta prije plaćanja.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
