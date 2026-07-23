@@ -78,7 +78,7 @@ class _BslAiAskFieldState extends State<BslAiAskField> {
       textField: true,
       label: 'Pitaj BSL AI',
       child: Container(
-        constraints: const BoxConstraints(minHeight: 116),
+        constraints: const BoxConstraints(minHeight: 108),
         padding: const EdgeInsets.all(1),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(22),
@@ -99,7 +99,7 @@ class _BslAiAskFieldState extends State<BslAiAskField> {
           ],
         ),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(11, 9, 8, 9),
+          padding: const EdgeInsets.fromLTRB(11, 6, 8, 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(21),
             gradient: const LinearGradient(
@@ -146,7 +146,7 @@ class _BslAiAskFieldState extends State<BslAiAskField> {
                   ),
                 ],
               ),
-              const SizedBox(height: 7),
+              const SizedBox(height: 5),
               Container(
                 height: 41,
                 padding: const EdgeInsets.only(left: 10, right: 3),

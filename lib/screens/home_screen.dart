@@ -14,6 +14,7 @@ import '../modules/ev_chargers/screens/ev_chargers_map_screen.dart';
 import '../modules/parkiraj/screens/parkiraj_home_screen.dart';
 import '../modules/wallet/screens/wallet_home_screen.dart';
 import '../services/weather_service.dart';
+import '../widgets/animated_logo.dart';
 import '../widgets/bsl_home_header.dart';
 import '../widgets/home_layout_editor.dart';
 import 'profile_screen.dart';
@@ -387,32 +388,56 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         appBar: AppBar(
           backgroundColor: const Color(0xFF070B18),
           elevation: 0,
-          titleSpacing: 18,
-          title: const Text.rich(
-            TextSpan(
-              children: [
-                TextSpan(
-                  text: 'BALKAN',
-                  style: TextStyle(color: Colors.white),
+          toolbarHeight: 74,
+          titleSpacing: 10,
+          title: Row(
+            children: [
+              const AnimatedBslLogo(
+                height: 55,
+                repeatDelay: Duration(minutes: 1),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Text.rich(
+                      const TextSpan(
+                        children: [
+                          TextSpan(
+                            text: 'BALKAN',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          TextSpan(
+                            text: ' SMART LIFE',
+                            style: TextStyle(color: Color(0xFF58E7FF)),
+                          ),
+                        ],
+                      ),
+                      maxLines: 1,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.85,
+                        shadows: [
+                          Shadow(
+                            color: Color(0x6600D9FF),
+                            blurRadius: 12,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-                TextSpan(
-                  text: ' SMART LIFE',
-                  style: TextStyle(color: Color(0xFF58E7FF)),
-                ),
-              ],
-            ),
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.9,
-              shadows: [
-                Shadow(color: Color(0x6600D9FF), blurRadius: 12),
-              ],
-            ),
+              ),
+            ],
           ),
           actions: [
             IconButton(
+              padding: const EdgeInsets.only(left: 7, right: 12),
+              constraints: const BoxConstraints(minWidth: 52),
               icon: const Icon(
                 Icons.menu_rounded,
                 size: 32,

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../modules/ai_assistant/widgets/bsl_ai_answer_sheet.dart';
 import '../modules/ai_assistant/widgets/bsl_ai_ask_field.dart';
-import 'animated_logo.dart';
 
 typedef BslCityChanged = Future<void> Function(String city);
 
@@ -24,10 +23,10 @@ class BslHomeHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final cityColumnWidth = constraints.maxWidth >= 360 ? 136.0 : 122.0;
+        final cityColumnWidth = constraints.maxWidth >= 360 ? 148.0 : 132.0;
 
         return Container(
-          height: 136,
+          height: 128,
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(27),
@@ -67,31 +66,22 @@ class BslHomeHeader extends StatelessWidget {
                   SizedBox(
                     width: cityColumnWidth,
                     child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        const Expanded(
-                          child: Center(
-                            child: AnimatedBslLogo(
-                              height: 58,
-                              repeatDelay: Duration(minutes: 1),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 3),
                         const Padding(
                           padding: EdgeInsets.only(right: 4),
                           child: Text(
-                            'ODABRANI GRAD',
+                            'IZABERI GRAD',
                             style: TextStyle(
                               color: Colors.white54,
-                              fontSize: 8,
+                              fontSize: 9,
                               fontWeight: FontWeight.w800,
-                              letterSpacing: 0.9,
+                              letterSpacing: 1,
                             ),
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 7),
                         _CompactCitySelector(
                           selectedCity: selectedCity,
                           cities: cities,
@@ -100,23 +90,7 @@ class BslHomeHeader extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 9),
-                  Container(
-                    width: 1,
-                    margin: const EdgeInsets.symmetric(vertical: 7),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.cyanAccent.withValues(alpha: 0.25),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 9),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: BslAiAskField(
                       city: selectedCity,
@@ -150,8 +124,8 @@ class _CompactCitySelector extends StatelessWidget {
       label: 'Izaberi grad',
       button: true,
       child: Container(
-        height: 38,
-        padding: const EdgeInsets.only(left: 10, right: 5),
+        height: 43,
+        padding: const EdgeInsets.only(left: 11, right: 6),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.055),
           borderRadius: BorderRadius.circular(14),
@@ -169,11 +143,11 @@ class _CompactCitySelector extends StatelessWidget {
             icon: const Icon(
               Icons.keyboard_arrow_down_rounded,
               color: Color(0xFF77E9FF),
-              size: 18,
+              size: 19,
             ),
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 10.5,
+              fontSize: 11,
               fontWeight: FontWeight.w700,
             ),
             selectedItemBuilder: (context) {
