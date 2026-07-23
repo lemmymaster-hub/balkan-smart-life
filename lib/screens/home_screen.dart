@@ -9,6 +9,8 @@ import '../core/context/bsl_location_context.dart';
 import '../core/context/city_context.dart';
 import '../core/services/home_tile_order_service.dart';
 import '../core/widgets/bsl_reorderable_grid.dart';
+import '../modules/ai_assistant/services/bsl_ai_service.dart';
+import '../modules/ai_assistant/widgets/bsl_ai_ask_field.dart';
 import '../modules/ev_chargers/screens/ev_chargers_map_screen.dart';
 import '../modules/parkiraj/screens/parkiraj_home_screen.dart';
 import '../modules/wallet/screens/wallet_home_screen.dart';
@@ -50,6 +52,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   ];
 
   final HomeTileOrderService _tileOrderService = HomeTileOrderService();
+  final BslAiService _aiService = BslAiService();
   late List<MenuItemData> _menuItems;
   Future<void> _tileOrderSaveQueue = Future<void>.value();
   bool _isTileOrderLoaded = false;
@@ -81,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _aiService.dispose();
     super.dispose();
   }
 
@@ -384,7 +388,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         appBar: AppBar(
           backgroundColor: const Color(0xFF070B18),
           elevation: 0,
-          title: const Text('Balkan Smart Life'),
+          titleSpacing: 18,
+          title: const Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: 'BALKAN',
+                  style: TextStyle(color: Colors.white),
+                ),
+                TextSpan(
+                  text: ' SMART LIFE',
+                  style: TextStyle(color: Color(0xFF58E7FF)),
+                ),
+              ],
+            ),
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.9,
+              shadows: [
+                Shadow(color: Color(0x6600D9FF), blurRadius: 12),
+              ],
+            ),
+          ),
           actions: [
             IconButton(
               icon: const Icon(
@@ -418,19 +445,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     Row(
                       children: [
                         const AnimatedBslLogo(
-                          height: 85,
+                          height: 82,
                           repeatDelay: Duration(minutes: 1),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
-                          child: Text(
-                            'Balkan Smart Life',
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
+                        Expanded(
+                          child: BslAiAskField(
+                            city: selectedCity,
+                            onAsk: ({
+                              required String question,
+                              required String city,
+                            }) {
+                              return _aiService.ask(
+                                question: question,
+                                city: city,
+                              );
+                            },
                           ),
                         ),
                       ],
