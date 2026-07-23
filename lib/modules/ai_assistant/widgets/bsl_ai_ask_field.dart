@@ -79,36 +79,16 @@ class _BslAiAskFieldState extends State<BslAiAskField> {
       label: 'Pitaj BSL AI',
       child: Container(
         constraints: const BoxConstraints(minHeight: 108),
-        padding: const EdgeInsets.all(1),
+        padding: const EdgeInsets.fromLTRB(11, 6, 8, 6),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
-          gradient: LinearGradient(
+          borderRadius: BorderRadius.circular(21),
+          gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Colors.cyanAccent.withValues(alpha: 0.88),
-              Colors.white.withValues(alpha: 0.22),
-              Colors.blueAccent.withValues(alpha: 0.56),
-            ],
+            colors: [Color(0xF51A2943), Color(0xF50B1328)],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.cyanAccent.withValues(alpha: 0.15),
-              blurRadius: 18,
-            ),
-          ],
         ),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(11, 6, 8, 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(21),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xF51A2943), Color(0xF50B1328)],
-            ),
-          ),
-          child: Column(
+        child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -214,7 +194,6 @@ class _BslAiAskFieldState extends State<BslAiAskField> {
                 ),
               ),
             ],
-          ),
         ),
       ),
     );

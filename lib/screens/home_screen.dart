@@ -418,9 +418,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                       maxLines: 1,
                       style: const TextStyle(
-                        fontSize: 18,
+                        fontSize: 21,
                         fontWeight: FontWeight.w900,
-                        letterSpacing: 0.85,
+                        height: 1.08,
+                        letterSpacing: 0.7,
                         shadows: [
                           Shadow(
                             color: Color(0x6600D9FF),

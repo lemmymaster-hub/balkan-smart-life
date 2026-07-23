@@ -67,17 +67,17 @@ class BslHomeHeader extends StatelessWidget {
                     width: cityColumnWidth,
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Padding(
-                          padding: EdgeInsets.only(right: 4),
+                          padding: EdgeInsets.only(left: 3),
                           child: Text(
                             'IZABERI GRAD',
                             style: TextStyle(
-                              color: Colors.white54,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1,
+                              color: Colors.white70,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.75,
                             ),
                           ),
                         ),
