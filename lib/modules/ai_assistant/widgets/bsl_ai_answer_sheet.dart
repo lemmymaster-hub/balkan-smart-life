@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/bsl_ai_answer.dart';
 import '../services/bsl_ai_service.dart';
+import 'bsl_ai_bulb_icon.dart';
 
 typedef BslAiAskCallback =
     Future<BslAiAnswer> Function({
@@ -84,24 +85,7 @@ class _BslAiAnswerSheetState extends State<BslAiAnswerSheet> {
             padding: const EdgeInsets.fromLTRB(20, 16, 12, 10),
             child: Row(
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(15),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF00D9FF), Color(0xFF346BFF)],
-                    ),
-                    boxShadow: const [
-                      BoxShadow(color: Color(0x6600D9FF), blurRadius: 18),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.auto_awesome_rounded,
-                    color: Colors.white,
-                    size: 23,
-                  ),
-                ),
+                const BslAiBulbIcon(size: 48),
                 const SizedBox(width: 12),
                 const Expanded(
                   child: Column(

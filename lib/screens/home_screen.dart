@@ -10,12 +10,11 @@ import '../core/context/city_context.dart';
 import '../core/services/home_tile_order_service.dart';
 import '../core/widgets/bsl_reorderable_grid.dart';
 import '../modules/ai_assistant/services/bsl_ai_service.dart';
-import '../modules/ai_assistant/widgets/bsl_ai_ask_field.dart';
 import '../modules/ev_chargers/screens/ev_chargers_map_screen.dart';
 import '../modules/parkiraj/screens/parkiraj_home_screen.dart';
 import '../modules/wallet/screens/wallet_home_screen.dart';
 import '../services/weather_service.dart';
-import '../widgets/animated_logo.dart';
+import '../widgets/bsl_home_header.dart';
 import '../widgets/home_layout_editor.dart';
 import 'profile_screen.dart';
 import 'weather_screen.dart';
@@ -427,84 +426,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         body: SafeArea(
           child: Column(
             children: [
-              Container(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0D1428),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.cyanAccent.withValues(alpha: 0.25),
-                      blurRadius: 22,
-                      spreadRadius: 1,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const AnimatedBslLogo(
-                          height: 82,
-                          repeatDelay: Duration(minutes: 1),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: BslAiAskField(
-                            city: selectedCity,
-                            onAsk: ({
-                              required String question,
-                              required String city,
-                            }) {
-                              return _aiService.ask(
-                                question: question,
-                                city: city,
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: dropdownValue,
-                      dropdownColor: const Color(0xFF111A33),
-                      decoration: InputDecoration(
-                        labelText: 'Izaberi grad',
-                        labelStyle: const TextStyle(color: Colors.white70),
-                        prefixIcon: const Icon(
-                          Icons.location_city,
-                          color: Colors.white70,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.22),
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(
-                            color: Colors.cyanAccent,
-                          ),
-                        ),
-                      ),
-                      style: const TextStyle(color: Colors.white),
-                      items: cities
-                          .map(
-                            (city) => DropdownMenuItem<String>(
-                              value: city,
-                              child: Text(city),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) async {
-                        if (value != null) {
-                          await context.read<CityContext>().setCity(value);
-                        }
-                      },
-                    ),
-                  ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                child: BslHomeHeader(
+                  selectedCity: dropdownValue,
+                  cities: cities,
+                  onCityChanged: (city) {
+                    return context.read<CityContext>().setCity(city);
+                  },
+                  onAsk: ({
+                    required String question,
+                    required String city,
+                  }) {
+                    return _aiService.ask(question: question, city: city);
+                  },
                 ),
               ),
               if (_isEditingTileOrder)

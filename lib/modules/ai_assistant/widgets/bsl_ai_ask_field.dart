@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'bsl_ai_answer_sheet.dart';
+import 'bsl_ai_bulb_icon.dart';
 
 class BslAiAskField extends StatefulWidget {
   final String city;
@@ -77,10 +78,10 @@ class _BslAiAskFieldState extends State<BslAiAskField> {
       textField: true,
       label: 'Pitaj BSL AI',
       child: Container(
-        constraints: const BoxConstraints(minHeight: 76),
+        constraints: const BoxConstraints(minHeight: 116),
         padding: const EdgeInsets.all(1),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(21),
+          borderRadius: BorderRadius.circular(22),
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -92,64 +93,73 @@ class _BslAiAskFieldState extends State<BslAiAskField> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.cyanAccent.withValues(alpha: 0.20),
-              blurRadius: 20,
-              spreadRadius: 1,
+              color: Colors.cyanAccent.withValues(alpha: 0.15),
+              blurRadius: 18,
             ),
           ],
         ),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(11, 8, 7, 8),
+          padding: const EdgeInsets.fromLTRB(11, 9, 8, 9),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(21),
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [Color(0xF51A2943), Color(0xF50B1328)],
             ),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF00E5FF), Color(0xFF397BFF)],
+              Row(
+                children: [
+                  const BslAiBulbIcon(size: 43),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'PITAJ BSL',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Color(0xFF7DEBFF),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Pametni asistent za ${widget.city}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white60,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.cyanAccent.withValues(alpha: 0.34),
-                      blurRadius: 13,
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.auto_awesome_rounded,
-                  size: 18,
-                  color: Colors.white,
-                ),
+                ],
               ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(height: 7),
+              Container(
+                height: 41,
+                padding: const EdgeInsets.only(left: 10, right: 3),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.11),
+                  ),
+                ),
+                child: Row(
                   children: [
-                    const Text(
-                      'PITAJ BSL',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Color(0xFF7DEBFF),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.15,
-                      ),
-                    ),
-                    SizedBox(
-                      height: 30,
+                    Expanded(
                       child: TextField(
                         controller: _controller,
                         focusNode: _focusNode,
@@ -161,40 +171,46 @@ class _BslAiAskFieldState extends State<BslAiAskField> {
                         cursorColor: Colors.cyanAccent,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 13,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
                         decoration: const InputDecoration(
                           isDense: true,
                           border: InputBorder.none,
                           counterText: '',
-                          contentPadding: EdgeInsets.only(top: 5),
-                          hintText: 'Postavi pitanje...',
+                          contentPadding: EdgeInsets.only(bottom: 8),
+                          hintText: 'Pitaj o gradu...',
                           hintStyle: TextStyle(
                             color: Colors.white54,
-                            fontSize: 12,
+                            fontSize: 10.5,
                             fontWeight: FontWeight.w400,
                           ),
                         ),
                         onSubmitted: (_) => _submit(),
                       ),
                     ),
+                    IconButton(
+                      tooltip: 'Pošalji pitanje',
+                      onPressed: _isAnswerOpen ? null : _submit,
+                      style: IconButton.styleFrom(
+                        minimumSize: const Size(34, 34),
+                        maximumSize: const Size(34, 34),
+                        backgroundColor: Colors.cyanAccent.withValues(
+                          alpha: 0.14,
+                        ),
+                        disabledBackgroundColor: Colors.white.withValues(
+                          alpha: 0.04,
+                        ),
+                      ),
+                      icon: Icon(
+                        Icons.arrow_upward_rounded,
+                        size: 18,
+                        color: _isAnswerOpen
+                            ? Colors.white24
+                            : Colors.cyanAccent,
+                      ),
+                    ),
                   ],
-                ),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                tooltip: 'Pošalji pitanje',
-                onPressed: _isAnswerOpen ? null : _submit,
-                style: IconButton.styleFrom(
-                  minimumSize: const Size(38, 38),
-                  backgroundColor: Colors.cyanAccent.withValues(alpha: 0.12),
-                  disabledBackgroundColor: Colors.white.withValues(alpha: 0.04),
-                ),
-                icon: Icon(
-                  Icons.arrow_upward_rounded,
-                  size: 20,
-                  color: _isAnswerOpen ? Colors.white24 : Colors.cyanAccent,
                 ),
               ),
             ],

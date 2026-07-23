@@ -26,17 +26,16 @@ class BslAiService {
   final http.Client _httpClient;
   final Uri? _endpoint;
   final BslAiIdTokenProvider _idTokenProvider;
-  final Duration _timeout;
+  final Duration timeout;
 
   BslAiService({
     http.Client? httpClient,
     Uri? endpoint,
     BslAiIdTokenProvider? idTokenProvider,
-    Duration timeout = const Duration(seconds: 20),
+    this.timeout = const Duration(seconds: 20),
   }) : _httpClient = httpClient ?? http.Client(),
        _endpoint = endpoint ?? _parseConfiguredEndpoint(),
-       _idTokenProvider = idTokenProvider ?? _firebaseIdToken,
-       _timeout = timeout;
+       _idTokenProvider = idTokenProvider ?? _firebaseIdToken;
 
   static Uri? _parseConfiguredEndpoint() {
     final value = _endpointFromEnvironment.trim();
@@ -91,7 +90,7 @@ class BslAiService {
               'locale': 'bs',
             }),
           )
-          .timeout(_timeout);
+          .timeout(timeout);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw _exceptionForStatus(response.statusCode);
