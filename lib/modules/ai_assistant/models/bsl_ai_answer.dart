@@ -1,3 +1,5 @@
+import 'bsl_ai_action.dart';
+
 class BslAiSource {
   final String title;
   final Uri? url;
@@ -21,6 +23,7 @@ class BslAiAnswer {
   final bool grounded;
   final List<BslAiSource> sources;
   final String? requestId;
+  final BslAiAction? action;
 
   const BslAiAnswer({
     required this.answer,
@@ -28,6 +31,7 @@ class BslAiAnswer {
     required this.grounded,
     required this.sources,
     this.requestId,
+    this.action,
   });
 
   factory BslAiAnswer.fromJson(
@@ -58,6 +62,7 @@ class BslAiAnswer {
       grounded: json['grounded'] == true,
       sources: sources,
       requestId: requestId == null || requestId.isEmpty ? null : requestId,
+      action: BslAiAction.tryFromJson(json['action']),
     );
   }
 }

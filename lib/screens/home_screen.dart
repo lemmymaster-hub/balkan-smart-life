@@ -7,9 +7,12 @@ import 'package:provider/provider.dart';
 
 import '../core/context/bsl_location_context.dart';
 import '../core/context/city_context.dart';
+import '../core/models/bsl_city.dart';
 import '../core/services/home_tile_order_service.dart';
 import '../core/widgets/bsl_reorderable_grid.dart';
-import '../modules/ai_assistant/services/bsl_ai_service.dart';
+import '../modules/ai_assistant/controllers/bsl_ai_coordinator.dart';
+import '../modules/ai_assistant/models/bsl_ai_action.dart';
+import '../modules/ai_assistant/models/bsl_ai_request_context.dart';
 import '../modules/ev_chargers/screens/ev_chargers_map_screen.dart';
 import '../modules/parkiraj/screens/parkiraj_home_screen.dart';
 import '../modules/wallet/screens/wallet_home_screen.dart';
@@ -52,7 +55,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   ];
 
   final HomeTileOrderService _tileOrderService = HomeTileOrderService();
-  final BslAiService _aiService = BslAiService();
+  final BslAiCoordinator _aiCoordinator = BslAiCoordinator();
   late List<MenuItemData> _menuItems;
   Future<void> _tileOrderSaveQueue = Future<void>.value();
   bool _isTileOrderLoaded = false;
@@ -84,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _aiService.dispose();
+    _aiCoordinator.dispose();
     super.dispose();
   }
 
@@ -184,8 +187,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _openWeatherScreen() async {
-    final selectedCity = context.read<CityContext>().selectedCity;
+  Future<void> _openWeatherScreen([String? requestedCity]) async {
+    final selectedCity =
+        requestedCity ?? context.read<CityContext>().selectedCity;
 
     await Navigator.push(
       context,
@@ -193,6 +197,53 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         builder: (context) => WeatherScreen(initialCity: selectedCity),
       ),
     );
+  }
+
+  Future<void> _executeAiAction(BslAiAction action) async {
+    final cityContext = context.read<CityContext>();
+    final requestedCity = BslCities.findExact(action.city ?? '')?.name;
+    final targetCity = requestedCity ?? cityContext.selectedCity;
+
+    if (!BslCities.same(targetCity, cityContext.selectedCity)) {
+      await cityContext.setCity(targetCity);
+      if (!mounted) return;
+    }
+
+    switch (action.type) {
+      case BslAiActionType.openParking:
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ParkirajHomeScreen(
+              city: targetCity,
+              initialSearchQuery: action.query,
+              selectNearestOnOpen: action.selectNearest,
+            ),
+          ),
+        );
+        break;
+      case BslAiActionType.openEvChargers:
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => EvChargersMapScreen(
+              city: targetCity,
+              initialSearchQuery: action.query,
+              selectNearestOnOpen: action.selectNearest,
+            ),
+          ),
+        );
+        break;
+      case BslAiActionType.openWeather:
+        await _openWeatherScreen(targetCity);
+        break;
+      case BslAiActionType.openWallet:
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const WalletHomeScreen()),
+        );
+        break;
+    }
   }
 
   void _showLegalNotices() {
@@ -423,10 +474,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         height: 1.08,
                         letterSpacing: 0.7,
                         shadows: [
-                          Shadow(
-                            color: Color(0x6600D9FF),
-                            blurRadius: 12,
-                          ),
+                          Shadow(color: Color(0x6600D9FF), blurRadius: 12),
                         ],
                       ),
                     ),
@@ -460,12 +508,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   onCityChanged: (city) {
                     return context.read<CityContext>().setCity(city);
                   },
-                  onAsk: ({
-                    required String question,
-                    required String city,
-                  }) {
-                    return _aiService.ask(question: question, city: city);
+                  onAsk: ({required String question, required String city}) {
+                    final location = context
+                        .read<BslLocationContext>()
+                        .location;
+                    return _aiCoordinator.ask(
+                      question: question,
+                      context: BslAiRequestContext(
+                        city: city,
+                        latitude: location?.latitude,
+                        longitude: location?.longitude,
+                      ),
+                    );
                   },
+                  onAction: _executeAiAction,
                 ),
               ),
               if (_isEditingTileOrder)

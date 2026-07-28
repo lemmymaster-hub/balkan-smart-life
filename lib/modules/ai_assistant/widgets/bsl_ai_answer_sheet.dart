@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/bsl_ai_action.dart';
 import '../models/bsl_ai_answer.dart';
 import '../services/bsl_ai_service.dart';
 import 'bsl_ai_bulb_icon.dart';
@@ -14,12 +15,14 @@ class BslAiAnswerSheet extends StatefulWidget {
   final String question;
   final String city;
   final BslAiAskCallback onAsk;
+  final bool autoExecuteSafeActions;
 
   const BslAiAnswerSheet({
     super.key,
     required this.question,
     required this.city,
     required this.onAsk,
+    this.autoExecuteSafeActions = false,
   });
 
   @override
@@ -28,6 +31,7 @@ class BslAiAnswerSheet extends StatefulWidget {
 
 class _BslAiAnswerSheetState extends State<BslAiAnswerSheet> {
   late Future<BslAiAnswer> _answerFuture;
+  bool _autoActionScheduled = false;
 
   @override
   void initState() {
@@ -36,14 +40,29 @@ class _BslAiAnswerSheetState extends State<BslAiAnswerSheet> {
   }
 
   void _askAgain() {
-    _answerFuture = widget.onAsk(
-      question: widget.question,
-      city: widget.city,
-    );
+    _autoActionScheduled = false;
+    _answerFuture = widget.onAsk(question: widget.question, city: widget.city);
   }
 
   void _retry() {
     setState(_askAgain);
+  }
+
+  void _scheduleAutomaticAction(BslAiAnswer answer) {
+    final action = answer.action;
+    if (!widget.autoExecuteSafeActions ||
+        action == null ||
+        !action.canExecuteAutomatically ||
+        _autoActionScheduled) {
+      return;
+    }
+
+    _autoActionScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+      if (!mounted) return;
+      Navigator.pop<BslAiAction>(context, action);
+    });
   }
 
   @override
@@ -59,9 +78,7 @@ class _BslAiAnswerSheetState extends State<BslAiAnswerSheet> {
           end: Alignment.bottomRight,
           colors: [Color(0xFF14243D), Color(0xFF080D1B)],
         ),
-        border: Border.all(
-          color: Colors.cyanAccent.withValues(alpha: 0.28),
-        ),
+        border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.28)),
         boxShadow: [
           BoxShadow(
             color: Colors.cyanAccent.withValues(alpha: 0.22),
@@ -161,7 +178,21 @@ class _BslAiAnswerSheetState extends State<BslAiAnswerSheet> {
                     else if (snapshot.hasError)
                       _BslAiError(error: snapshot.error, onRetry: _retry)
                     else if (snapshot.hasData)
-                      _BslAiAnswerContent(answer: snapshot.requireData),
+                      Builder(
+                        builder: (context) {
+                          final answer = snapshot.requireData;
+                          _scheduleAutomaticAction(answer);
+                          return _BslAiAnswerContent(
+                            answer: answer,
+                            onAction: answer.action == null
+                                ? null
+                                : () => Navigator.pop<BslAiAction>(
+                                    context,
+                                    answer.action,
+                                  ),
+                          );
+                        },
+                      ),
                   ],
                 );
               },
@@ -185,9 +216,7 @@ class _BslAiLoading extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.045),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.cyanAccent.withValues(alpha: 0.13),
-        ),
+        border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.13)),
       ),
       child: Row(
         children: [
@@ -240,11 +269,7 @@ class _BslAiError extends StatelessWidget {
         children: [
           const Row(
             children: [
-              Icon(
-                Icons.shield_outlined,
-                color: Colors.orangeAccent,
-                size: 21,
-              ),
+              Icon(Icons.shield_outlined, color: Colors.orangeAccent, size: 21),
               SizedBox(width: 9),
               Text(
                 'Odgovor nije dostupan',
@@ -285,13 +310,17 @@ class _BslAiError extends StatelessWidget {
 
 class _BslAiAnswerContent extends StatelessWidget {
   final BslAiAnswer answer;
+  final VoidCallback? onAction;
 
-  const _BslAiAnswerContent({required this.answer});
+  const _BslAiAnswerContent({required this.answer, required this.onAction});
 
   @override
   Widget build(BuildContext context) {
     final hasVerifiedSources = answer.grounded && answer.sources.isNotEmpty;
-    final statusColor = hasVerifiedSources
+    final hasAction = answer.action != null;
+    final statusColor = hasAction
+        ? const Color(0xFF78E8FF)
+        : hasVerifiedSources
         ? const Color(0xFF48E5A2)
         : Colors.amberAccent;
 
@@ -300,9 +329,7 @@ class _BslAiAnswerContent extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.055),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: Colors.cyanAccent.withValues(alpha: 0.16),
-        ),
+        border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.16)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -310,7 +337,9 @@ class _BslAiAnswerContent extends StatelessWidget {
           Row(
             children: [
               Icon(
-                hasVerifiedSources
+                hasAction
+                    ? Icons.auto_awesome_rounded
+                    : hasVerifiedSources
                     ? Icons.verified_rounded
                     : Icons.info_outline_rounded,
                 color: statusColor,
@@ -319,7 +348,9 @@ class _BslAiAnswerContent extends StatelessWidget {
               const SizedBox(width: 7),
               Expanded(
                 child: Text(
-                  hasVerifiedSources
+                  hasAction
+                      ? 'BSL akcija je spremna'
+                      : hasVerifiedSources
                       ? 'Odgovor potvrđen navedenim izvorima'
                       : 'AI odgovor • provjerite važne informacije',
                   style: TextStyle(
@@ -330,10 +361,7 @@ class _BslAiAnswerContent extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.cyanAccent.withValues(alpha: 0.09),
                   borderRadius: BorderRadius.circular(12),
@@ -358,6 +386,25 @@ class _BslAiAnswerContent extends StatelessWidget {
               height: 1.55,
             ),
           ),
+          if (answer.action != null && onAction != null) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onAction,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF00B8D9),
+                  foregroundColor: const Color(0xFF04111C),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                icon: const Icon(Icons.arrow_forward_rounded, size: 19),
+                label: Text(
+                  answer.action!.label,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+            ),
+          ],
           if (answer.sources.isNotEmpty) ...[
             const SizedBox(height: 20),
             const Divider(color: Colors.white12),

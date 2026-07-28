@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/bsl_ai_answer.dart';
+import '../models/bsl_ai_request_context.dart';
 
 typedef BslAiIdTokenProvider = Future<String?> Function();
 
@@ -37,6 +38,8 @@ class BslAiService {
        _endpoint = endpoint ?? _parseConfiguredEndpoint(),
        _idTokenProvider = idTokenProvider ?? _firebaseIdToken;
 
+  bool get isConfigured => _endpoint != null;
+
   static Uri? _parseConfiguredEndpoint() {
     final value = _endpointFromEnvironment.trim();
     if (value.isEmpty) return null;
@@ -55,6 +58,7 @@ class BslAiService {
   Future<BslAiAnswer> ask({
     required String question,
     required String city,
+    BslAiRequestContext? context,
   }) async {
     final normalizedQuestion = question.trim();
     final normalizedCity = city.trim();
@@ -87,7 +91,9 @@ class BslAiService {
             body: jsonEncode({
               'question': normalizedQuestion,
               'city': normalizedCity,
-              'locale': 'bs',
+              'locale': context?.locale ?? 'bs',
+              'context': (context ?? BslAiRequestContext(city: normalizedCity))
+                  .toJson(),
             }),
           )
           .timeout(timeout);
@@ -98,7 +104,9 @@ class BslAiService {
 
       final decoded = jsonDecode(utf8.decode(response.bodyBytes));
       if (decoded is! Map<String, dynamic>) {
-        throw const FormatException('BSL AI odgovor nije ispravan JSON objekt.');
+        throw const FormatException(
+          'BSL AI odgovor nije ispravan JSON objekt.',
+        );
       }
 
       return BslAiAnswer.fromJson(decoded, fallbackCity: normalizedCity);

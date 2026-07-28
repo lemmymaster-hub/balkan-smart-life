@@ -10,6 +10,7 @@ class BslHomeHeader extends StatelessWidget {
   final List<String> cities;
   final BslCityChanged onCityChanged;
   final BslAiAskCallback onAsk;
+  final BslAiActionCallback? onAction;
 
   const BslHomeHeader({
     super.key,
@@ -17,6 +18,7 @@ class BslHomeHeader extends StatelessWidget {
     required this.cities,
     required this.onCityChanged,
     required this.onAsk,
+    this.onAction,
   });
 
   @override
@@ -95,6 +97,7 @@ class BslHomeHeader extends StatelessWidget {
                     child: BslAiAskField(
                       city: selectedCity,
                       onAsk: onAsk,
+                      onAction: onAction,
                     ),
                   ),
                 ],
@@ -129,9 +132,7 @@ class _CompactCitySelector extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.055),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.16),
-          ),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
         ),
         child: DropdownButtonHideUnderline(
           child: DropdownButton<String>(

@@ -14,6 +14,7 @@ import '../../../core/navigation/bsl_navigation_controller.dart';
 import '../../../core/navigation/bsl_navigation_destination.dart';
 import '../../../core/navigation/bsl_navigation_vehicle_asset.dart';
 import '../../../core/services/address_geocoding_service.dart';
+import '../../../core/services/bsl_nearest_place_selector.dart';
 import '../../../core/theme/bsl_design_system.dart';
 import '../../../core/widgets/bsl_map_location_button.dart';
 import '../../../core/widgets/bsl_module_top_bar.dart';
@@ -28,8 +29,15 @@ import '../widgets/ev_charger_marker_factory.dart';
 
 class EvChargersMapScreen extends StatefulWidget {
   final String city;
+  final String? initialSearchQuery;
+  final bool selectNearestOnOpen;
 
-  const EvChargersMapScreen({super.key, required this.city});
+  const EvChargersMapScreen({
+    super.key,
+    required this.city,
+    this.initialSearchQuery,
+    this.selectNearestOnOpen = false,
+  });
 
   @override
   State<EvChargersMapScreen> createState() => _EvChargersMapScreenState();
@@ -79,6 +87,7 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
   bool _navigationVehicleMarkerLoadRequested = false;
   bool? _nativeLocationIndicatorEnabled;
   String? _lastChargingSessionId;
+  bool _initialRequestStarted = false;
 
   CameraPosition get _initialCameraPosition {
     final location = _locationContext?.location;
@@ -111,6 +120,7 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
   void initState() {
     super.initState();
     _activeCity = BslCities.byName(widget.city);
+    _searchController.text = widget.initialSearchQuery?.trim() ?? '';
     _chargerNavigation.addListener(_handleChargerNavigationChanged);
     _chargingSession.addListener(_handleChargingSessionChanged);
     unawaited(_loadMapStyle());
@@ -307,6 +317,7 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
             _scheduleChargerMarkerSync();
 
             unawaited(_prepareMarkerIcons(chargers));
+            _tryRunInitialRequest();
           },
           onError: (Object error, StackTrace stackTrace) {
             if (!mounted || requestId != _cityRequestId) return;
@@ -399,6 +410,8 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
         !_userChangedMapTarget) {
       unawaited(_centerMapOnUser());
     }
+
+    _tryRunInitialRequest();
   }
 
   BslCity? _cityFromLocation(BslLocationResult location) {
@@ -517,7 +530,10 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
     }
   }
 
-  Future<void> _searchChargerOrAddress(String value) async {
+  Future<void> _searchChargerOrAddress(
+    String value, {
+    bool selectNearestToResult = false,
+  }) async {
     if (_chargerNavigation.shouldShowPanel) {
       _searchFocusNode.unfocus();
       _showMessage('Zaustavi navigaciju prije nove pretrage.');
@@ -588,12 +604,105 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
 
     _userChangedMapTarget = true;
     _hasCenteredOnUser = true;
-    await _animateTo(target: address.location, zoom: 16);
+    final nearestCharger = selectNearestToResult
+        ? _nearestChargerTo(
+            latitude: address.location.latitude,
+            longitude: address.location.longitude,
+          )
+        : null;
+    await _animateTo(
+      target: nearestCharger?.position ?? address.location,
+      zoom: nearestCharger == null ? 16 : 17,
+    );
 
     if (!mounted) return;
-    setState(() => _selectedCharger = null);
+    setState(() => _selectedCharger = nearestCharger);
     _scheduleChargerMarkerSync();
+
+    if (selectNearestToResult && nearestCharger == null) {
+      _showMessage('Nema mapiranog punjača u blizini tražene lokacije.');
+    }
+
     _searchFocusNode.unfocus();
+  }
+
+  EvCharger? _nearestChargerTo({
+    required double latitude,
+    required double longitude,
+  }) {
+    final candidates = _chargers
+        .where((charger) => charger.isActive)
+        .toList(growable: false);
+    if (candidates.isEmpty) return null;
+
+    return BslNearestPlaceSelector.find(
+      items: candidates,
+      latitude: latitude,
+      longitude: longitude,
+      latitudeOf: (charger) => charger.latitude,
+      longitudeOf: (charger) => charger.longitude,
+      maxDistanceKilometers: 20,
+    );
+  }
+
+  void _tryRunInitialRequest() {
+    if (_initialRequestStarted ||
+        _mapController == null ||
+        _isLoading ||
+        !mounted) {
+      return;
+    }
+
+    final query = widget.initialSearchQuery?.trim() ?? '';
+    if (query.isEmpty && !widget.selectNearestOnOpen) return;
+
+    final location = _locationContext?.location;
+    final locationCity = location == null ? null : _cityFromLocation(location);
+    final canUseUserLocation =
+        location != null &&
+        locationCity != null &&
+        BslCities.same(locationCity.name, _activeCity.name);
+
+    if (query.isEmpty &&
+        widget.selectNearestOnOpen &&
+        location == null &&
+        (_locationContext?.isLoading ?? false)) {
+      return;
+    }
+
+    _initialRequestStarted = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+
+      if (query.isNotEmpty) {
+        await _searchChargerOrAddress(
+          query,
+          selectNearestToResult: widget.selectNearestOnOpen,
+        );
+        return;
+      }
+
+      final targetLatitude = canUseUserLocation
+          ? location!.latitude
+          : _activeCity.latitude;
+      final targetLongitude = canUseUserLocation
+          ? location!.longitude
+          : _activeCity.longitude;
+      final nearestCharger = _nearestChargerTo(
+        latitude: targetLatitude,
+        longitude: targetLongitude,
+      );
+
+      if (nearestCharger == null) return;
+
+      _userChangedMapTarget = true;
+      _hasCenteredOnUser = true;
+      await _animateTo(target: nearestCharger.position, zoom: 17);
+      if (!mounted) return;
+
+      setState(() => _selectedCharger = nearestCharger);
+      _scheduleChargerMarkerSync();
+    });
   }
 
   Future<void> _animateTo({
@@ -629,6 +738,7 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
 
     _scheduleChargerMarkerSync();
     await _centerMapOnUser();
+    _tryRunInitialRequest();
   }
 
   Future<void> _applyMapStyle(GoogleMapViewController controller) async {

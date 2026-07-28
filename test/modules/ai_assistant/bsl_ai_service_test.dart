@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:bsl_app/modules/ai_assistant/services/bsl_ai_service.dart';
+import 'package:bsl_app/modules/ai_assistant/models/bsl_ai_action.dart';
+import 'package:bsl_app/modules/ai_assistant/models/bsl_ai_request_context.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -23,6 +25,14 @@ void main() {
             },
           ],
           'request_id': 'req-1',
+          'action': {
+            'type': 'open_parking',
+            'parameters': {
+              'city': 'Sarajevo',
+              'query': 'Skenderija',
+              'select_nearest': true,
+            },
+          },
         }),
         200,
         headers: {'content-type': 'application/json; charset=utf-8'},
@@ -38,6 +48,11 @@ void main() {
     final answer = await service.ask(
       question: 'Gdje je parking?',
       city: 'Sarajevo',
+      context: const BslAiRequestContext(
+        city: 'Sarajevo',
+        latitude: 43.8563,
+        longitude: 18.4131,
+      ),
     );
 
     final requestBody =
@@ -46,10 +61,17 @@ void main() {
     expect(requestBody['question'], 'Gdje je parking?');
     expect(requestBody['city'], 'Sarajevo');
     expect(requestBody['locale'], 'bs');
+    final requestContext = requestBody['context'] as Map<String, dynamic>;
+    expect(requestContext['city'], 'Sarajevo');
+    expect(requestContext['location'], {
+      'latitude': 43.8563,
+      'longitude': 18.4131,
+    });
     expect(answer.answer, 'Najbliži parking je Skenderija.');
     expect(answer.grounded, isTrue);
     expect(answer.sources.single.title, 'BSL parking podaci');
     expect(answer.requestId, 'req-1');
+    expect(answer.action?.type, BslAiActionType.openParking);
 
     service.dispose();
   });

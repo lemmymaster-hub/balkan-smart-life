@@ -15,6 +15,7 @@ import '../../../core/navigation/bsl_navigation_controller.dart';
 import '../../../core/navigation/bsl_navigation_destination.dart';
 import '../../../core/navigation/bsl_navigation_vehicle_asset.dart';
 import '../../../core/services/address_geocoding_service.dart';
+import '../../../core/services/bsl_nearest_place_selector.dart';
 import '../../../core/theme/bsl_design_system.dart';
 import '../../../core/widgets/bsl_map_location_button.dart';
 import '../../../core/widgets/bsl_module_top_bar.dart';
@@ -25,8 +26,15 @@ import '../services/parking_service.dart';
 
 class ParkingMapScreen extends StatefulWidget {
   final String city;
+  final String? initialSearchQuery;
+  final bool selectNearestOnOpen;
 
-  const ParkingMapScreen({super.key, required this.city});
+  const ParkingMapScreen({
+    super.key,
+    required this.city,
+    this.initialSearchQuery,
+    this.selectNearestOnOpen = false,
+  });
 
   @override
   State<ParkingMapScreen> createState() => _ParkingMapScreenState();
@@ -74,6 +82,7 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
   bool _lastHasUserLocation = false;
   bool _lastLocationIsLoading = false;
   bool _lastLocationNeedsAttention = false;
+  bool _initialRequestStarted = false;
 
   CameraPosition get _initialCameraPosition {
     final userLocation = _locationContext?.location;
@@ -100,6 +109,7 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
   void initState() {
     super.initState();
     _displayedCity = BslCities.byName(widget.city).name;
+    _searchController.text = widget.initialSearchQuery?.trim() ?? '';
     _parkingNavigation.addListener(_handleParkingNavigationChanged);
     _loadMapStyle();
     _loadParkingMarker();
@@ -195,6 +205,8 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
     if (location != null && !_hasCenteredOnUser && !_userChangedMapTarget) {
       _centerMapOnUser();
     }
+
+    _tryRunInitialRequest();
   }
 
   void _setDisplayedCityFromLocation(BslLocationResult location) {
@@ -468,6 +480,7 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
         });
 
         _scheduleParkingMarkerSync();
+        _tryRunInitialRequest();
       },
       onError: (error) {
         if (!mounted) return;
@@ -668,7 +681,10 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
     }
   }
 
-  Future<void> _searchParkingOrAddress(String value) async {
+  Future<void> _searchParkingOrAddress(
+    String value, {
+    bool selectNearestToResult = false,
+  }) async {
     if (_parkingNavigation.shouldShowPanel) {
       _searchFocusNode.unfocus();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -793,22 +809,140 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
     _userChangedMapTarget = true;
     _hasCenteredOnUser = true;
 
-    await _animateTo(target: addressLocation, zoom: 16);
+    final resultCity =
+        mentionedCity?.name ??
+        BslCities.nearestTo(
+          latitude: addressLocation.latitude,
+          longitude: addressLocation.longitude,
+        ).name;
+    final nearestParking = selectNearestToResult
+        ? _nearestParkingTo(
+            latitude: addressLocation.latitude,
+            longitude: addressLocation.longitude,
+            city: resultCity,
+          )
+        : null;
+
+    await _animateTo(
+      target: nearestParking?.position ?? addressLocation,
+      zoom: nearestParking == null ? 16 : 17,
+    );
 
     if (!mounted) return;
 
     setState(() {
-      _displayedCity =
-          mentionedCity?.name ??
-          BslCities.nearestTo(
-            latitude: addressLocation.latitude,
-            longitude: addressLocation.longitude,
-          ).name;
-      _selectedParking = null;
+      _displayedCity = resultCity;
+      _selectedParking = nearestParking;
     });
     _scheduleParkingMarkerSync();
 
+    if (selectNearestToResult && nearestParking == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nema mapiranog parkinga u blizini tražene lokacije.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+
     _searchFocusNode.unfocus();
+  }
+
+  ParkingLocation? _nearestParkingTo({
+    required double latitude,
+    required double longitude,
+    required String city,
+  }) {
+    final cityCandidates = _parkings
+        .where((parking) => parking.belongsToBslCity(city))
+        .toList(growable: false);
+    if (cityCandidates.isEmpty) return null;
+
+    final availableCandidates = cityCandidates
+        .where((parking) => parking.freeSpots > 0 || parking.totalSpots <= 0)
+        .toList(growable: false);
+    final candidates = availableCandidates.isNotEmpty
+        ? availableCandidates
+        : cityCandidates;
+
+    return BslNearestPlaceSelector.find(
+      items: candidates,
+      latitude: latitude,
+      longitude: longitude,
+      latitudeOf: (parking) => parking.lat,
+      longitudeOf: (parking) => parking.lng,
+      maxDistanceKilometers: 8,
+    );
+  }
+
+  void _tryRunInitialRequest() {
+    if (_initialRequestStarted ||
+        _mapController == null ||
+        _isLoading ||
+        !mounted) {
+      return;
+    }
+
+    final query = widget.initialSearchQuery?.trim() ?? '';
+    if (query.isEmpty && !widget.selectNearestOnOpen) return;
+
+    final selectedCity = BslCities.byName(widget.city);
+    final location = _locationContext?.location;
+    final locationCity = location == null
+        ? null
+        : BslCities.nearestTo(
+            latitude: location.latitude,
+            longitude: location.longitude,
+          );
+    final canUseUserLocation =
+        location != null &&
+        locationCity != null &&
+        BslCities.same(locationCity.name, selectedCity.name);
+
+    if (query.isEmpty &&
+        widget.selectNearestOnOpen &&
+        location == null &&
+        (_locationContext?.isLoading ?? false)) {
+      return;
+    }
+
+    _initialRequestStarted = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+
+      if (query.isNotEmpty) {
+        await _searchParkingOrAddress(
+          query,
+          selectNearestToResult: widget.selectNearestOnOpen,
+        );
+        return;
+      }
+
+      final targetLatitude = canUseUserLocation
+          ? location!.latitude
+          : selectedCity.latitude;
+      final targetLongitude = canUseUserLocation
+          ? location!.longitude
+          : selectedCity.longitude;
+      final nearestParking = _nearestParkingTo(
+        latitude: targetLatitude,
+        longitude: targetLongitude,
+        city: selectedCity.name,
+      );
+
+      if (nearestParking == null) return;
+
+      _userChangedMapTarget = true;
+      _hasCenteredOnUser = true;
+      await _animateTo(target: nearestParking.position, zoom: 17);
+      if (!mounted) return;
+
+      setState(() {
+        _displayedCity = selectedCity.name;
+        _selectedParking = nearestParking;
+      });
+      _scheduleParkingMarkerSync();
+    });
   }
 
   Future<void> _animateTo({
@@ -848,6 +982,7 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
 
     _scheduleParkingMarkerSync();
     await _centerMapOnUser();
+    _tryRunInitialRequest();
   }
 
   Future<void> _applyMapStyle(GoogleMapViewController controller) async {

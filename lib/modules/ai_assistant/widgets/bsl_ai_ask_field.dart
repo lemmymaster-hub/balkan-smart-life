@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/bsl_ai_action.dart';
 import 'bsl_ai_answer_sheet.dart';
 import 'bsl_ai_bulb_icon.dart';
+
+typedef BslAiActionCallback = Future<void> Function(BslAiAction action);
 
 class BslAiAskField extends StatefulWidget {
   final String city;
   final BslAiAskCallback onAsk;
+  final BslAiActionCallback? onAction;
 
   const BslAiAskField({
     super.key,
     required this.city,
     required this.onAsk,
+    this.onAction,
   });
 
   @override
@@ -49,7 +54,7 @@ class _BslAiAskFieldState extends State<BslAiAskField> {
     _controller.clear();
 
     try {
-      await showModalBottomSheet<void>(
+      final action = await showModalBottomSheet<BslAiAction>(
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
@@ -60,9 +65,14 @@ class _BslAiAskFieldState extends State<BslAiAskField> {
             question: question,
             city: widget.city,
             onAsk: widget.onAsk,
+            autoExecuteSafeActions: widget.onAction != null,
           );
         },
       );
+
+      if (action != null && mounted) {
+        await widget.onAction?.call(action);
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -89,111 +99,107 @@ class _BslAiAskFieldState extends State<BslAiAskField> {
           ),
         ),
         child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const BslAiBulbIcon(size: 43),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'PITAJ BSL',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Color(0xFF7DEBFF),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Pametni asistent za ${widget.city}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white60,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Container(
+              height: 41,
+              padding: const EdgeInsets.only(left: 10, right: 3),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.11)),
+              ),
+              child: Row(
                 children: [
-                  const BslAiBulbIcon(size: 43),
-                  const SizedBox(width: 8),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'PITAJ BSL',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Color(0xFF7DEBFF),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.2,
-                          ),
+                    child: TextField(
+                      controller: _controller,
+                      focusNode: _focusNode,
+                      enabled: !_isAnswerOpen,
+                      textInputAction: TextInputAction.send,
+                      keyboardType: TextInputType.text,
+                      maxLines: 1,
+                      maxLength: 500,
+                      cursorColor: Colors.cyanAccent,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        border: InputBorder.none,
+                        counterText: '',
+                        contentPadding: EdgeInsets.only(bottom: 8),
+                        hintText: 'Pitaj o gradu...',
+                        hintStyle: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w400,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Pametni asistent za ${widget.city}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white60,
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
+                      ),
+                      onSubmitted: (_) => _submit(),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Pošalji pitanje',
+                    onPressed: _isAnswerOpen ? null : _submit,
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(34, 34),
+                      maximumSize: const Size(34, 34),
+                      backgroundColor: Colors.cyanAccent.withValues(
+                        alpha: 0.14,
+                      ),
+                      disabledBackgroundColor: Colors.white.withValues(
+                        alpha: 0.04,
+                      ),
+                    ),
+                    icon: Icon(
+                      Icons.arrow_upward_rounded,
+                      size: 18,
+                      color: _isAnswerOpen ? Colors.white24 : Colors.cyanAccent,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 5),
-              Container(
-                height: 41,
-                padding: const EdgeInsets.only(left: 10, right: 3),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.11),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focusNode,
-                        enabled: !_isAnswerOpen,
-                        textInputAction: TextInputAction.send,
-                        keyboardType: TextInputType.text,
-                        maxLines: 1,
-                        maxLength: 500,
-                        cursorColor: Colors.cyanAccent,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          border: InputBorder.none,
-                          counterText: '',
-                          contentPadding: EdgeInsets.only(bottom: 8),
-                          hintText: 'Pitaj o gradu...',
-                          hintStyle: TextStyle(
-                            color: Colors.white54,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                        onSubmitted: (_) => _submit(),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Pošalji pitanje',
-                      onPressed: _isAnswerOpen ? null : _submit,
-                      style: IconButton.styleFrom(
-                        minimumSize: const Size(34, 34),
-                        maximumSize: const Size(34, 34),
-                        backgroundColor: Colors.cyanAccent.withValues(
-                          alpha: 0.14,
-                        ),
-                        disabledBackgroundColor: Colors.white.withValues(
-                          alpha: 0.04,
-                        ),
-                      ),
-                      icon: Icon(
-                        Icons.arrow_upward_rounded,
-                        size: 18,
-                        color: _isAnswerOpen
-                            ? Colors.white24
-                            : Colors.cyanAccent,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
+          ],
         ),
       ),
     );
