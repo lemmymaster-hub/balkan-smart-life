@@ -877,6 +877,13 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
     );
   }
 
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
+
   void _tryRunInitialRequest() {
     if (_initialRequestStarted ||
         _mapController == null ||
