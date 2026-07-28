@@ -13,18 +13,40 @@ class BslAiLocalIntentResolver {
     final normalizedQuestion = BslCities.normalize(question);
     if (normalizedQuestion.isEmpty) return null;
 
+    final useCurrentLocation = _containsAnyPhrase(
+      normalizedQuestion,
+      _currentLocationReferences,
+    );
     final mentionedCity = _findMentionedCity(question);
-    final city = mentionedCity?.name ?? BslCities.byName(context.city).name;
+    final locationCity = useCurrentLocation && context.hasLocation
+        ? BslCities.nearestTo(
+            latitude: context.latitude!,
+            longitude: context.longitude!,
+          )
+        : null;
+    final city =
+        mentionedCity?.name ??
+        locationCity?.name ??
+        BslCities.byName(context.city).name;
 
     if (_containsAny(normalizedQuestion, _parkingTerms)) {
-      final target = _extractTarget(
-        normalizedQuestion,
-        city: city,
-        intentTerms: _parkingTerms,
-      );
+      if (useCurrentLocation && !context.hasLocation) {
+        return _locationUnavailableAnswer(city);
+      }
+
+      final target = useCurrentLocation
+          ? null
+          : _extractTarget(
+              normalizedQuestion,
+              city: city,
+              intentTerms: _parkingTerms,
+            );
 
       return BslAiAnswer(
-        answer: target == null
+        answer: useCurrentLocation
+            ? 'Otvaram Parkiraj.ba i tražim najbliži parking prema tvojoj '
+                  'trenutnoj GPS lokaciji.'
+            : target == null
             ? 'Otvaram Parkiraj.ba i tražim najbliži dostupan parking u '
                   '$city.'
             : 'Otvaram Parkiraj.ba i tražim najbliži parking lokaciji '
@@ -34,20 +56,34 @@ class BslAiLocalIntentResolver {
         sources: const [],
         action: BslAiAction(
           type: BslAiActionType.openParking,
-          parameters: {'city': city, 'query': ?target, 'select_nearest': true},
+          parameters: {
+            'city': city,
+            'query': ?target,
+            'select_nearest': true,
+            'use_current_location': useCurrentLocation,
+          },
         ),
       );
     }
 
     if (_containsAny(normalizedQuestion, _evChargerTerms)) {
-      final target = _extractTarget(
-        normalizedQuestion,
-        city: city,
-        intentTerms: _evChargerTerms,
-      );
+      if (useCurrentLocation && !context.hasLocation) {
+        return _locationUnavailableAnswer(city);
+      }
+
+      final target = useCurrentLocation
+          ? null
+          : _extractTarget(
+              normalizedQuestion,
+              city: city,
+              intentTerms: _evChargerTerms,
+            );
 
       return BslAiAnswer(
-        answer: target == null
+        answer: useCurrentLocation
+            ? 'Otvaram EL Punjače i tražim najbliži punjač prema tvojoj '
+                  'trenutnoj GPS lokaciji.'
+            : target == null
             ? 'Otvaram EL Punjače i tražim najbliži punjač u gradu $city.'
             : 'Otvaram EL Punjače i tražim najbliži punjač lokaciji '
                   '„$target“ u gradu $city.',
@@ -56,7 +92,12 @@ class BslAiLocalIntentResolver {
         sources: const [],
         action: BslAiAction(
           type: BslAiActionType.openEvChargers,
-          parameters: {'city': city, 'query': ?target, 'select_nearest': true},
+          parameters: {
+            'city': city,
+            'query': ?target,
+            'select_nearest': true,
+            'use_current_location': useCurrentLocation,
+          },
         ),
       );
     }
@@ -90,6 +131,17 @@ class BslAiLocalIntentResolver {
     }
 
     return null;
+  }
+
+  BslAiAnswer _locationUnavailableAnswer(String city) {
+    return BslAiAnswer(
+      answer:
+          'Ne mogu pouzdano pronaći najbližu lokaciju jer GPS položaj nije '
+          'dostupan. Omogući lokaciju za BSL aplikaciju i pokušaj ponovo.',
+      city: city,
+      grounded: false,
+      sources: const [],
+    );
   }
 
   String? _extractTarget(
@@ -162,6 +214,11 @@ class BslAiLocalIntentResolver {
   bool _containsAny(String value, List<String> terms) {
     final paddedValue = ' $value ';
     return terms.any((term) => paddedValue.contains(' $term '));
+  }
+
+  bool _containsAnyPhrase(String value, List<String> phrases) {
+    final paddedValue = ' $value ';
+    return phrases.any((phrase) => paddedValue.contains(' $phrase '));
   }
 
   BslCity? _findMentionedCity(String question) {
@@ -238,6 +295,19 @@ class BslAiLocalIntentResolver {
     'kod',
     'pored',
     'oko',
+  ];
+
+  static const _currentLocationReferences = <String>[
+    'moja lokacija',
+    'moje lokacije',
+    'mojoj lokaciji',
+    'trenutna lokacija',
+    'trenutne lokacije',
+    'trenutnoj lokaciji',
+    'gdje sam',
+    'oko mene',
+    'blizu mene',
+    'u blizini mene',
   ];
 
   static const _commandWords = <String>[

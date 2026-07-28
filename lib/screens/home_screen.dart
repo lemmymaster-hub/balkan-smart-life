@@ -218,6 +218,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               city: targetCity,
               initialSearchQuery: action.query,
               selectNearestOnOpen: action.selectNearest,
+              useCurrentLocationOnOpen: action.useCurrentLocation,
             ),
           ),
         );
@@ -230,6 +231,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               city: targetCity,
               initialSearchQuery: action.query,
               selectNearestOnOpen: action.selectNearest,
+              useCurrentLocationOnOpen: action.useCurrentLocation,
             ),
           ),
         );

@@ -61,6 +61,28 @@ void main() {
     expect(answer?.action?.city, 'Tuzla');
   });
 
+  test('moja lokacija koristi GPS bez slanja fraze geokoderu', () {
+    final answer = resolver.resolve(
+      question: 'Nađi mi EL punjač blizu moje lokacije',
+      context: sarajevoContext,
+    );
+
+    expect(answer?.action?.type, BslAiActionType.openEvChargers);
+    expect(answer?.action?.query, isNull);
+    expect(answer?.action?.selectNearest, isTrue);
+    expect(answer?.action?.useCurrentLocation, isTrue);
+  });
+
+  test('ne glumi preciznost kada GPS lokacija nije dostupna', () {
+    final answer = resolver.resolve(
+      question: 'Nađi parking blizu moje lokacije',
+      context: const BslAiRequestContext(city: 'Sarajevo'),
+    );
+
+    expect(answer?.action, isNull);
+    expect(answer?.answer, contains('GPS položaj nije dostupan'));
+  });
+
   test('ne pokušava lokalno odgovoriti na opšte pitanje', () {
     final answer = resolver.resolve(
       question: 'Ko je napisao Na Drini ćuprija?',

@@ -10,6 +10,7 @@ void main() {
         'city': 'Sarajevo',
         'query': 'bolnica',
         'select_nearest': true,
+        'use_current_location': true,
       },
     });
 
@@ -18,6 +19,7 @@ void main() {
     expect(action.city, 'Sarajevo');
     expect(action.query, 'bolnica');
     expect(action.selectNearest, isTrue);
+    expect(action.useCurrentLocation, isTrue);
     expect(action.canExecuteAutomatically, isTrue);
   });
 

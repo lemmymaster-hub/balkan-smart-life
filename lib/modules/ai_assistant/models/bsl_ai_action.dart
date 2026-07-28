@@ -64,6 +64,8 @@ class BslAiAction {
 
   bool get selectNearest => parameters['select_nearest'] == true;
 
+  bool get useCurrentLocation => parameters['use_current_location'] == true;
+
   bool get canExecuteAutomatically => type.canExecuteAutomatically;
 
   Map<String, Object?> toJson() {
@@ -102,7 +104,10 @@ class BslAiAction {
     for (final entry in value.entries) {
       final key = entry.key;
       if (key is! String ||
-          (key != 'city' && key != 'query' && key != 'select_nearest')) {
+          (key != 'city' &&
+              key != 'query' &&
+              key != 'select_nearest' &&
+              key != 'use_current_location')) {
         continue;
       }
 

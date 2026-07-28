@@ -31,12 +31,14 @@ class EvChargersMapScreen extends StatefulWidget {
   final String city;
   final String? initialSearchQuery;
   final bool selectNearestOnOpen;
+  final bool useCurrentLocationOnOpen;
 
   const EvChargersMapScreen({
     super.key,
     required this.city,
     this.initialSearchQuery,
     this.selectNearestOnOpen = false,
+    this.useCurrentLocationOnOpen = false,
   });
 
   @override
@@ -660,13 +662,25 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
     final locationCity = location == null ? null : _cityFromLocation(location);
     final canUseUserLocation =
         location != null &&
-        locationCity != null &&
-        BslCities.same(locationCity.name, _activeCity.name);
+        (widget.useCurrentLocationOnOpen ||
+            (locationCity != null &&
+                BslCities.same(locationCity.name, _activeCity.name)));
 
     if (query.isEmpty &&
         widget.selectNearestOnOpen &&
         location == null &&
         (_locationContext?.isLoading ?? false)) {
+      return;
+    }
+
+    if (query.isEmpty && widget.useCurrentLocationOnOpen && location == null) {
+      _initialRequestStarted = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _showMessage(
+          'GPS lokacija nije dostupna. Omogući lokaciju i pokušaj ponovo.',
+        );
+      });
       return;
     }
 
@@ -693,7 +707,14 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
         longitude: targetLongitude,
       );
 
-      if (nearestCharger == null) return;
+      if (nearestCharger == null) {
+        if (widget.useCurrentLocationOnOpen) {
+          _showMessage(
+            'Nema mapiranog EL punjača u krugu od 20 km od tvoje lokacije.',
+          );
+        }
+        return;
+      }
 
       _userChangedMapTarget = true;
       _hasCenteredOnUser = true;

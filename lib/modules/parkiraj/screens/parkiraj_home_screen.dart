@@ -5,12 +5,14 @@ class ParkirajHomeScreen extends StatelessWidget {
   final String city;
   final String? initialSearchQuery;
   final bool selectNearestOnOpen;
+  final bool useCurrentLocationOnOpen;
 
   const ParkirajHomeScreen({
     super.key,
     required this.city,
     this.initialSearchQuery,
     this.selectNearestOnOpen = false,
+    this.useCurrentLocationOnOpen = false,
   });
 
   @override
@@ -19,6 +21,7 @@ class ParkirajHomeScreen extends StatelessWidget {
       city: city,
       initialSearchQuery: initialSearchQuery,
       selectNearestOnOpen: selectNearestOnOpen,
+      useCurrentLocationOnOpen: useCurrentLocationOnOpen,
     );
   }
 }
