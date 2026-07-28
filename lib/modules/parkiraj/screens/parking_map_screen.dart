@@ -919,10 +919,10 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
       }
 
       final targetLatitude = canUseUserLocation
-          ? location!.latitude
+          ? location.latitude
           : selectedCity.latitude;
       final targetLongitude = canUseUserLocation
-          ? location!.longitude
+          ? location.longitude
           : selectedCity.longitude;
       final nearestParking = _nearestParkingTo(
         latitude: targetLatitude,

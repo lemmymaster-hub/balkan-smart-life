@@ -683,10 +683,10 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
       }
 
       final targetLatitude = canUseUserLocation
-          ? location!.latitude
+          ? location.latitude
           : _activeCity.latitude;
       final targetLongitude = canUseUserLocation
-          ? location!.longitude
+          ? location.longitude
           : _activeCity.longitude;
       final nearestCharger = _nearestChargerTo(
         latitude: targetLatitude,

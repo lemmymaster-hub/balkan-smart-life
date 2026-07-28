@@ -34,11 +34,7 @@ class BslAiLocalIntentResolver {
         sources: const [],
         action: BslAiAction(
           type: BslAiActionType.openParking,
-          parameters: {
-            'city': city,
-            if (target != null) 'query': target,
-            'select_nearest': true,
-          },
+          parameters: {'city': city, 'query': ?target, 'select_nearest': true},
         ),
       );
     }
@@ -60,11 +56,7 @@ class BslAiLocalIntentResolver {
         sources: const [],
         action: BslAiAction(
           type: BslAiActionType.openEvChargers,
-          parameters: {
-            'city': city,
-            if (target != null) 'query': target,
-            'select_nearest': true,
-          },
+          parameters: {'city': city, 'query': ?target, 'select_nearest': true},
         ),
       );
     }

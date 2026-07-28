@@ -7,11 +7,14 @@ class BslAiCoordinator {
   final BslAiService _remoteService;
   final BslAiLocalIntentResolver _localResolver;
 
-  BslAiCoordinator({
+  factory BslAiCoordinator({
     BslAiService? remoteService,
     BslAiLocalIntentResolver localResolver = const BslAiLocalIntentResolver(),
-  }) : _remoteService = remoteService ?? BslAiService(),
-       _localResolver = localResolver;
+  }) {
+    return BslAiCoordinator._(remoteService ?? BslAiService(), localResolver);
+  }
+
+  BslAiCoordinator._(this._remoteService, this._localResolver);
 
   Future<BslAiAnswer> ask({
     required String question,
