@@ -1,0 +1,6 @@
+// Dodati unutar match /databases/{database}/documents bloka postojećih
+// Firestore pravila. Ne zamjenjivati cijeli postojeći rules fajl ovim
+// isječkom.
+match /bsl_ai_rate_limits/{userId} {
+  allow read, write: if false;
+}

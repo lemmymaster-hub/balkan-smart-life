@@ -10,6 +10,7 @@ void main() {
       remoteService: BslAiService(
         endpoint: null,
         idTokenProvider: () async => null,
+        appCheckTokenProvider: () async => null,
       ),
     );
 
@@ -29,6 +30,7 @@ void main() {
       remoteService: BslAiService(
         endpoint: null,
         idTokenProvider: () async => null,
+        appCheckTokenProvider: () async => null,
       ),
     );
 

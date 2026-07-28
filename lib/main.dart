@@ -1,6 +1,8 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'core/context/bsl_location_context.dart';
@@ -14,6 +16,21 @@ Future<void> main() async {
   try {
     await Firebase.initializeApp();
     debugPrint('Firebase initialized OK');
+
+    try {
+      await FirebaseAppCheck.instance.activate(
+        androidProvider: kDebugMode
+            ? AndroidProvider.debug
+            : AndroidProvider.playIntegrity,
+        appleProvider: kDebugMode
+            ? AppleProvider.debug
+            : AppleProvider.appAttestWithDeviceCheckFallback,
+      );
+      await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
+      debugPrint('Firebase App Check initialized OK');
+    } catch (error) {
+      debugPrint('Firebase App Check init error: $error');
+    }
   } catch (e) {
     debugPrint('Firebase init error: $e');
   }

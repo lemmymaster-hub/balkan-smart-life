@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
@@ -8,6 +9,7 @@ import '../models/bsl_ai_answer.dart';
 import '../models/bsl_ai_request_context.dart';
 
 typedef BslAiIdTokenProvider = Future<String?> Function();
+typedef BslAiAppCheckTokenProvider = Future<String?> Function();
 
 class BslAiException implements Exception {
   final String userMessage;
@@ -27,16 +29,19 @@ class BslAiService {
   final http.Client _httpClient;
   final Uri? _endpoint;
   final BslAiIdTokenProvider _idTokenProvider;
+  final BslAiAppCheckTokenProvider _appCheckTokenProvider;
   final Duration timeout;
 
   BslAiService({
     http.Client? httpClient,
     Uri? endpoint,
     BslAiIdTokenProvider? idTokenProvider,
+    BslAiAppCheckTokenProvider? appCheckTokenProvider,
     this.timeout = const Duration(seconds: 20),
   }) : _httpClient = httpClient ?? http.Client(),
        _endpoint = endpoint ?? _parseConfiguredEndpoint(),
-       _idTokenProvider = idTokenProvider ?? _firebaseIdToken;
+       _idTokenProvider = idTokenProvider ?? _firebaseIdToken,
+       _appCheckTokenProvider = appCheckTokenProvider ?? _firebaseAppCheckToken;
 
   bool get isConfigured => _endpoint != null;
 
@@ -53,6 +58,17 @@ class BslAiService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
     return user.getIdToken();
+  }
+
+  static Future<String?> _firebaseAppCheckToken() async {
+    try {
+      return await FirebaseAppCheck.instance.getToken();
+    } catch (_) {
+      throw const BslAiException(
+        'Sigurnosna provjera BSL aplikacije nije dostupna. '
+        'Provjerite App Check konfiguraciju.',
+      );
+    }
   }
 
   Future<BslAiAnswer> ask({
@@ -77,11 +93,14 @@ class BslAiService {
 
     try {
       final idToken = await _idTokenProvider();
+      final appCheckToken = await _appCheckTokenProvider();
       final headers = <String, String>{
         'Accept': 'application/json',
         'Content-Type': 'application/json',
         if (idToken != null && idToken.isNotEmpty)
           'Authorization': 'Bearer $idToken',
+        if (appCheckToken != null && appCheckToken.isNotEmpty)
+          'X-Firebase-AppCheck': appCheckToken,
       };
 
       final response = await _httpClient
@@ -134,9 +153,14 @@ class BslAiService {
   BslAiException _exceptionForStatus(int statusCode) {
     switch (statusCode) {
       case 401:
-      case 403:
         return BslAiException(
           'Prijava za BSL AI nije važeća. Prijavite se ponovo.',
+          statusCode: statusCode,
+        );
+      case 403:
+        return BslAiException(
+          'Sigurnosna provjera BSL aplikacije nije uspjela. '
+          'Ažurirajte aplikaciju ili provjerite App Check konfiguraciju.',
           statusCode: statusCode,
         );
       case 429:

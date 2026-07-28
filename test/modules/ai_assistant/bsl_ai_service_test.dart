@@ -43,6 +43,7 @@ void main() {
       httpClient: client,
       endpoint: Uri.parse('https://api.example.com/v1/ask'),
       idTokenProvider: () async => 'firebase-token',
+      appCheckTokenProvider: () async => 'app-check-token',
     );
 
     final answer = await service.ask(
@@ -58,6 +59,7 @@ void main() {
     final requestBody =
         jsonDecode(capturedRequest.body) as Map<String, dynamic>;
     expect(capturedRequest.headers['authorization'], 'Bearer firebase-token');
+    expect(capturedRequest.headers['x-firebase-appcheck'], 'app-check-token');
     expect(requestBody['question'], 'Gdje je parking?');
     expect(requestBody['city'], 'Sarajevo');
     expect(requestBody['locale'], 'bs');
@@ -81,6 +83,7 @@ void main() {
       httpClient: MockClient((request) async => http.Response('', 429)),
       endpoint: Uri.parse('https://api.example.com/v1/ask'),
       idTokenProvider: () async => null,
+      appCheckTokenProvider: () async => null,
     );
 
     await expectLater(
@@ -92,6 +95,30 @@ void main() {
               (error) => error.userMessage,
               'userMessage',
               contains('zauzet'),
+            ),
+      ),
+    );
+
+    service.dispose();
+  });
+
+  test('403 razlikuje App Check odbijanje od nevažeće prijave', () async {
+    final service = BslAiService(
+      httpClient: MockClient((request) async => http.Response('', 403)),
+      endpoint: Uri.parse('https://api.example.com/v1/ask'),
+      idTokenProvider: () async => 'firebase-token',
+      appCheckTokenProvider: () async => 'invalid-app-check-token',
+    );
+
+    await expectLater(
+      service.ask(question: 'Pitaj BSL', city: 'Sarajevo'),
+      throwsA(
+        isA<BslAiException>()
+            .having((error) => error.statusCode, 'statusCode', 403)
+            .having(
+              (error) => error.userMessage,
+              'userMessage',
+              contains('App Check'),
             ),
       ),
     );

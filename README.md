@@ -60,6 +60,18 @@ gradovima i opštinama u regionu.
 - lokalna istorija simuliranih transakcija po korisniku
 - puni broj kartice i CVV se ne čuvaju u modelu, Firestoreu ili lokalnoj pohrani
 
+### Pitaj BSL
+
+- lokalne sigurne komande za parking, EL punjače, vrijeme i novčanik
+- GPS zahtjevi koriste stvarne koordinate umjesto geokodiranja izraza
+  `moja lokacija`
+- Firebase Functions v2 backend za složenije NVIDIA NIM upite
+- Firebase Auth, App Check, Secret Manager i Firestore rate limiting
+- stroga allow-lista akcija; model ne može pokrenuti plaćanje ili proizvoljnu
+  aplikacijsku rutu
+- bez lažnih citata: odgovori ostaju neprovjereni dok se ne doda stvarni
+  RAG/internet izvor
+
 ### Modularna struktura
 
 - odvojeni moduli, modeli i servisni slojevi
@@ -73,7 +85,9 @@ nije dio ovog repozitorija.
 
 - Flutter i Dart
 - Firebase Authentication
+- Firebase App Check i Cloud Functions
 - Cloud Firestore
+- NVIDIA NIM API kroz sigurni backend
 - Google Navigation for Flutter i Navigation SDK for Android
 - sistemski Android/iOS geocoder
 - Open-Meteo API
