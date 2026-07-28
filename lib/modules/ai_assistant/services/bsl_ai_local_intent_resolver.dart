@@ -186,29 +186,49 @@ class BslAiLocalIntentResolver {
 
   static const _parkingTerms = <String>[
     'parking',
+    'parkinga',
+    'parkingu',
     'parkiraj',
     'parkirati',
     'parkiraliste',
+    'parkiralista',
     'garaza',
+    'garaze',
+    'garazu',
   ];
 
   static const _evChargerTerms = <String>[
     'punjac',
     'punjaci',
+    'punjaca',
+    'punjacem',
     'punjenje',
+    'punionica',
+    'punionice',
     'ev',
   ];
 
   static const _weatherTerms = <String>[
     'vrijeme',
     'vremenska',
+    'vremensku',
     'prognoza',
+    'prognozu',
     'temperatura',
+    'temperaturu',
     'kisa',
+    'kisu',
     'snijeg',
   ];
 
-  static const _walletTerms = <String>['novcanik', 'kartica', 'kartice'];
+  static const _walletTerms = <String>[
+    'novcanik',
+    'novcanika',
+    'novcaniku',
+    'kartica',
+    'kartice',
+    'karticu',
+  ];
 
   static const _nearMarkers = <String>[
     'u blizini',
@@ -237,14 +257,14 @@ class BslAiLocalIntentResolver {
   ];
 
   static const _cityMentionForms = <String, List<String>>{
-    'Sarajevo': ['sarajevu'],
-    'Banja Luka': ['banjoj luci', 'banja luci'],
-    'Mostar': ['mostaru'],
-    'Tuzla': ['tuzli'],
-    'Zenica': ['zenici'],
-    'Bihać': ['bihacu'],
-    'Trebinje': ['trebinju'],
+    'Sarajevo': ['sarajevu', 'sarajeva'],
+    'Banja Luka': ['banjoj luci', 'banja luci', 'banju luku', 'banje luke'],
+    'Mostar': ['mostaru', 'mostara'],
+    'Tuzla': ['tuzli', 'tuzlu', 'tuzle'],
+    'Zenica': ['zenici', 'zenicu', 'zenice'],
+    'Bihać': ['bihacu', 'bihaca'],
+    'Trebinje': ['trebinju', 'trebinja'],
     'Pale': ['palama'],
-    'Istočno Sarajevo': ['istocnom sarajevu'],
+    'Istočno Sarajevo': ['istocnom sarajevu', 'istocnog sarajeva'],
   };
 }

@@ -78,6 +78,7 @@ void main() {
     await tester.enterText(find.byType(TextField), 'Parking kod bolnice');
     await tester.tap(find.byTooltip('Pošalji pitanje'));
     await tester.pump();
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
 

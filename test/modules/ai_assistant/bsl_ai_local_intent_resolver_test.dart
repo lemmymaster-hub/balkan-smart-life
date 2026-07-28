@@ -51,6 +51,16 @@ void main() {
     expect(weatherAnswer?.action?.city, 'Trebinje');
   });
 
+  test('prepoznaje padeže u vremenskoj komandi i nazivu grada', () {
+    final answer = resolver.resolve(
+      question: 'Otvori vremensku prognozu za Tuzlu',
+      context: sarajevoContext,
+    );
+
+    expect(answer?.action?.type, BslAiActionType.openWeather);
+    expect(answer?.action?.city, 'Tuzla');
+  });
+
   test('ne pokušava lokalno odgovoriti na opšte pitanje', () {
     final answer = resolver.resolve(
       question: 'Ko je napisao Na Drini ćuprija?',
