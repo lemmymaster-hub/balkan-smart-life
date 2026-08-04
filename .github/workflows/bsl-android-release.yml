@@ -1,0 +1,146 @@
+name: BSL Android Release APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bsl-android-release
+  cancel-in-progress: false
+
+jobs:
+  build-release-apk:
+    name: Build and verify permanent release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.0"
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Analyze source
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Prepare protected release inputs
+        env:
+          BSL_RELEASE_KEYSTORE_BASE64: ${{ secrets.BSL_RELEASE_KEYSTORE_BASE64 }}
+          BSL_RELEASE_PASSWORD: ${{ secrets.BSL_RELEASE_PASSWORD }}
+          BSL_MAPS_API_KEY: ${{ secrets.BSL_MAPS_API_KEY }}
+          BSL_RELEASE_KEYSTORE_PATH: ${{ runner.temp }}/BSL_Release.jks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${BSL_RELEASE_KEYSTORE_BASE64}" ]]; then
+            echo "::error::Missing GitHub secret BSL_RELEASE_KEYSTORE_BASE64."
+            exit 1
+          fi
+          if [[ -z "${BSL_RELEASE_PASSWORD}" ]]; then
+            echo "::error::Missing GitHub secret BSL_RELEASE_PASSWORD."
+            exit 1
+          fi
+          if [[ ! "${BSL_MAPS_API_KEY}" =~ ^AIza[0-9A-Za-z_-]{35}$ ]]; then
+            echo "::error::BSL_MAPS_API_KEY is missing or is not a valid Google API key."
+            exit 1
+          fi
+
+          printf '%s' "${BSL_RELEASE_KEYSTORE_BASE64}" \
+            | tr -d '\r\n' \
+            | base64 --decode > "${BSL_RELEASE_KEYSTORE_PATH}"
+          chmod 600 "${BSL_RELEASE_KEYSTORE_PATH}"
+          test -s "${BSL_RELEASE_KEYSTORE_PATH}"
+
+          keytool -list \
+            -keystore "${BSL_RELEASE_KEYSTORE_PATH}" \
+            -storepass:env BSL_RELEASE_PASSWORD \
+            -alias bsl-release > /dev/null
+
+          printf '\nMAPS_API_KEY=%s\n' "${BSL_MAPS_API_KEY}" >> android/local.properties
+
+      - name: Build permanently signed release APK
+        env:
+          BSL_RELEASE_KEYSTORE_PATH: ${{ runner.temp }}/BSL_Release.jks
+          BSL_RELEASE_PASSWORD: ${{ secrets.BSL_RELEASE_PASSWORD }}
+        run: flutter build apk --release --build-number="${GITHUB_RUN_NUMBER}"
+
+      - name: Verify package, Maps key, and signature
+        env:
+          BSL_MAPS_API_KEY: ${{ secrets.BSL_MAPS_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source_apk="build/app/outputs/flutter-apk/app-release.apk"
+          output_dir="release-output"
+          output_apk="${output_dir}/BSL-Banja-Luka-1.0.0-${GITHUB_RUN_NUMBER}.apk"
+          android_sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
+
+          test -s "${source_apk}"
+          mkdir -p "${output_dir}"
+
+          apkanalyzer_bin="$(find "${android_sdk_root}/cmdline-tools" -type f -name apkanalyzer | sort | tail -n 1)"
+          apksigner_bin="$(find "${android_sdk_root}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "${apkanalyzer_bin}"
+          test -x "${apksigner_bin}"
+
+          application_id="$("${apkanalyzer_bin}" manifest application-id "${source_apk}")"
+          if [[ "${application_id}" != "ba.balkansmartlife.app" ]]; then
+            echo "::error::Unexpected Android application ID."
+            exit 1
+          fi
+
+          manifest_xml="$("${apkanalyzer_bin}" manifest print "${source_apk}")"
+          if [[ "${manifest_xml}" == *"DEFAULT_API_KEY"* ]]; then
+            echo "::error::Release APK contains the non-working Maps placeholder."
+            exit 1
+          fi
+          if [[ "${manifest_xml}" != *"${BSL_MAPS_API_KEY}"* ]]; then
+            echo "::error::Release APK does not contain the configured Maps key."
+            exit 1
+          fi
+          unset manifest_xml
+
+          "${apksigner_bin}" verify --verbose --print-certs "${source_apk}" \
+            | tee "${output_dir}/signature-verification.txt"
+
+          cp "${source_apk}" "${output_apk}"
+          sha256sum "${output_apk}" > "${output_apk}.sha256"
+          printf 'commit=%s\nrun=%s\npackage=ba.balkansmartlife.app\n' \
+            "${GITHUB_SHA}" "${GITHUB_RUN_ID}" > "${output_dir}/build-info.txt"
+
+      - name: Remove temporary secrets
+        if: always()
+        shell: bash
+        run: |
+          rm -f "${RUNNER_TEMP}/BSL_Release.jks"
+          rm -f android/local.properties
+
+      - name: Upload verified APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BSL-Banja-Luka-release-${{ github.run_number }}
+          path: release-output/
+          if-no-files-found: error
+          retention-days: 14

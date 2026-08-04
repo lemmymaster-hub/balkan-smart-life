@@ -7,6 +7,27 @@ plugins {
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
 }
 
+val releaseKeystorePath =
+    System.getenv("BSL_RELEASE_KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
+val releasePassword =
+    System.getenv("BSL_RELEASE_PASSWORD")?.takeIf { it.isNotBlank() }
+val releaseSigningConfigured = releaseKeystorePath != null && releasePassword != null
+val releaseBuildRequested =
+    gradle.startParameter.taskNames.any { taskName ->
+        taskName.contains("release", ignoreCase = true)
+    }
+
+if (releaseBuildRequested && !releaseSigningConfigured) {
+    throw GradleException(
+        "Release signing is mandatory. Set BSL_RELEASE_KEYSTORE_PATH and " +
+            "BSL_RELEASE_PASSWORD before building a release APK.",
+    )
+}
+
+if (releaseSigningConfigured && !file(releaseKeystorePath!!).isFile) {
+    throw GradleException("Release keystore was not found at BSL_RELEASE_KEYSTORE_PATH.")
+}
+
 android {
     namespace = "ba.balkansmartlife.app"
     compileSdk = 36
@@ -29,11 +50,22 @@ android {
         multiDexEnabled = true
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = releasePassword
+                keyAlias = "bsl-release"
+                keyPassword = releasePassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }

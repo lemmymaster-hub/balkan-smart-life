@@ -9,6 +9,10 @@
 !.env.example
 **/*.p12
 **/*.pem
+**/*.jks
+**/*.keystore
+**/key.properties
+**/local.properties
 **/firebase-adminsdk*.json
 **/service-account*.json
 **/*serviceAccount*.json
