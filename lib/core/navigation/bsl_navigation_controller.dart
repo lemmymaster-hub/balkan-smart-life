@@ -22,6 +22,8 @@ enum BslNavigationStage {
   error,
 }
 
+enum BslNavigationTravelMode { driving, walking }
+
 class BslNavigationController extends ChangeNotifier {
   GoogleNavigationViewController? _mapController;
 
@@ -42,6 +44,7 @@ class BslNavigationController extends ChangeNotifier {
   BslNavigationDestination? _destination;
   NavInfo? _navInfo;
   String? _errorMessage;
+  BslNavigationTravelMode _travelMode = BslNavigationTravelMode.driving;
 
   bool _sessionInitialized = false;
   bool _guidanceStarted = false;
@@ -60,6 +63,7 @@ class BslNavigationController extends ChangeNotifier {
   BslNavigationDestination? get destination => _destination;
   NavInfo? get navInfo => _navInfo;
   bool get canRetry => _canRetry;
+  BslNavigationTravelMode get travelMode => _travelMode;
 
   bool get isBusy {
     return _starting ||
@@ -83,7 +87,9 @@ class BslNavigationController extends ChangeNotifier {
       case BslNavigationStage.calculatingRoute:
         return 'Računam najbolju rutu...';
       case BslNavigationStage.guiding:
-        return 'Navigacija je aktivna';
+        return _travelMode == BslNavigationTravelMode.walking
+            ? 'Pješačka navigacija je aktivna'
+            : 'Navigacija je aktivna';
       case BslNavigationStage.rerouting:
         return 'Prilagođavam rutu tvom kretanju...';
       case BslNavigationStage.gpsLost:
@@ -118,6 +124,7 @@ class BslNavigationController extends ChangeNotifier {
   Future<void> start({
     required BslNavigationDestination destination,
     required EdgeInsets mapPadding,
+    BslNavigationTravelMode travelMode = BslNavigationTravelMode.driving,
   }) async {
     if (_closed || _starting || _stopping) return;
 
@@ -134,13 +141,16 @@ class BslNavigationController extends ChangeNotifier {
       return;
     }
 
-    if (_guidanceStarted && _destination?.id == destination.id) {
+    if (_guidanceStarted &&
+        _destination?.id == destination.id &&
+        _travelMode == travelMode) {
       await recenter();
       return;
     }
 
     _starting = true;
     _destination = destination;
+    _travelMode = travelMode;
     _navInfo = null;
     _errorMessage = null;
     _canRetry = false;
@@ -190,7 +200,9 @@ class BslNavigationController extends ChangeNotifier {
             showDestinationMarkers: false,
           ),
           routingOptions: RoutingOptions(
-            travelMode: NavigationTravelMode.driving,
+            travelMode: travelMode == BslNavigationTravelMode.walking
+                ? NavigationTravelMode.walking
+                : NavigationTravelMode.driving,
             routingStrategy: NavigationRoutingStrategy.defaultBest,
             alternateRoutesStrategy: NavigationAlternateRoutesStrategy.one,
             locationTimeoutMs: 30000,
@@ -207,9 +219,9 @@ class BslNavigationController extends ChangeNotifier {
       }
 
       final snappedLocation = _latestRoadSnappedLocation!;
-      final initialVehicleBearing = await _resolveInitialVehicleBearing(
-        snappedLocation,
-      );
+      final initialVehicleBearing = travelMode == BslNavigationTravelMode.driving
+          ? await _resolveInitialVehicleBearing(snappedLocation)
+          : null;
 
       await GoogleMapsNavigator.setAudioGuidance(
         NavigationAudioGuidanceSettings(
@@ -223,10 +235,14 @@ class BslNavigationController extends ChangeNotifier {
       await GoogleMapsNavigator.startGuidance();
       _guidanceStarted = true;
       _setStage(BslNavigationStage.guiding);
-      await _vehicleMarkerController.start(
-        position: snappedLocation,
-        initialBearing: initialVehicleBearing ?? 0,
-      );
+      if (travelMode == BslNavigationTravelMode.driving) {
+        await _vehicleMarkerController.start(
+          position: snappedLocation,
+          initialBearing: initialVehicleBearing ?? 0,
+        );
+      } else {
+        await _vehicleMarkerController.stop();
+      }
       await recenter();
     } on SessionInitializationException catch (error) {
       _showError(BslNavigationMessages.forInitializationError(error.code));
@@ -250,7 +266,11 @@ class BslNavigationController extends ChangeNotifier {
   Future<void> retry({required EdgeInsets mapPadding}) async {
     final destination = _destination;
     if (destination == null || _closed) return;
-    await start(destination: destination, mapPadding: mapPadding);
+    await start(
+      destination: destination,
+      mapPadding: mapPadding,
+      travelMode: _travelMode,
+    );
   }
 
   Future<void> recenter() async {
@@ -388,7 +408,9 @@ class BslNavigationController extends ChangeNotifier {
       _locationFixCompleter.complete(event.location);
     }
 
-    if (_guidanceStarted && !_closed) {
+    if (_guidanceStarted &&
+        !_closed &&
+        _travelMode == BslNavigationTravelMode.driving) {
       _vehicleMarkerController.updateLocation(event.location);
     }
   }
@@ -420,6 +442,7 @@ class BslNavigationController extends ChangeNotifier {
   }
 
   Future<void> _refreshVehicleBearingFromRoute() async {
+    if (_travelMode != BslNavigationTravelMode.driving) return;
     final location = _latestRoadSnappedLocation;
     if (location == null || !_guidanceStarted || _closed) return;
 
