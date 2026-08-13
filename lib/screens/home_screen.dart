@@ -13,6 +13,7 @@ import '../core/widgets/bsl_reorderable_grid.dart';
 import '../modules/ai_assistant/controllers/bsl_ai_coordinator.dart';
 import '../modules/ai_assistant/models/bsl_ai_action.dart';
 import '../modules/ai_assistant/models/bsl_ai_request_context.dart';
+import '../modules/atms/screens/atm_map_screen.dart';
 import '../modules/ev_chargers/screens/ev_chargers_map_screen.dart';
 import '../modules/parkiraj/screens/parkiraj_home_screen.dart';
 import '../modules/wallet/screens/wallet_home_screen.dart';
@@ -38,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       'EL Punjači',
       Icons.ev_station_rounded,
     ),
+    MenuItemData(HomeModuleIds.atms, 'Bankomati', Icons.atm_rounded),
     MenuItemData(HomeModuleIds.publicTransport, 'Gradski prevoz', Icons.tram),
     MenuItemData(HomeModuleIds.taxi, 'Taxi', Icons.local_taxi),
     MenuItemData(HomeModuleIds.weather, 'Vremenska prognoza', Icons.cloud),
@@ -599,6 +601,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 abstract final class HomeModuleIds {
   static const String parking = 'parking';
   static const String evChargers = 'ev_chargers';
+  static const String atms = 'atms';
   static const String publicTransport = 'public_transport';
   static const String taxi = 'taxi';
   static const String weather = 'weather';
@@ -825,6 +828,16 @@ class _MetroTileState extends State<MetroTile>
                   MaterialPageRoute(
                     builder: (context) =>
                         EvChargersMapScreen(city: widget.selectedCity),
+                  ),
+                );
+                return;
+              }
+
+              if (widget.item.id == HomeModuleIds.atms) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AtmMapScreen(city: widget.selectedCity),
                   ),
                 );
                 return;
