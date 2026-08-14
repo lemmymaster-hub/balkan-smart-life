@@ -42,6 +42,12 @@ abstract final class BslCities {
     BslCity(name: 'Istočno Sarajevo', latitude: 43.8210, longitude: 18.3610),
   ];
 
+  static final Map<String, BslCity> _resolvedCities = <String, BslCity>{};
+
+  static void cacheResolvedCity(BslCity city) {
+    _resolvedCities[normalize(city.name)] = city;
+  }
+
   static BslCity byName(String? name) {
     final input = name ?? '';
     final exact = findExact(input);
@@ -67,16 +73,21 @@ abstract final class BslCities {
       if (normalize(city.name) == normalizedInput) return city;
     }
 
-    return null;
+    return _resolvedCities[normalizedInput];
   }
 
   static BslCity? findMentionedIn(String input) {
     final normalizedInput = ' ${normalize(input)} ';
-    final citiesByLongestName = [...values]
-      ..sort((a, b) => b.name.length.compareTo(a.name.length));
+    final citiesByLongestName = <BslCity>[
+      ...values,
+      ..._resolvedCities.values,
+    ]..sort((a, b) => b.name.length.compareTo(a.name.length));
 
+    final seen = <String>{};
     for (final city in citiesByLongestName) {
-      if (normalizedInput.contains(' ${normalize(city.name)} ')) return city;
+      final normalizedCity = normalize(city.name);
+      if (!seen.add(normalizedCity)) continue;
+      if (normalizedInput.contains(' $normalizedCity ')) return city;
     }
 
     return null;
@@ -90,7 +101,9 @@ abstract final class BslCities {
     required double latitude,
     required double longitude,
   }) {
-    return values.reduce((closest, candidate) {
+    final candidates = <BslCity>[...values, ..._resolvedCities.values];
+
+    return candidates.reduce((closest, candidate) {
       final closestDistance = distanceInKilometers(
         fromLatitude: latitude,
         fromLongitude: longitude,
