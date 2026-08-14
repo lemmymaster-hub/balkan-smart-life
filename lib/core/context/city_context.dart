@@ -15,11 +15,11 @@ class CityContext extends ChangeNotifier {
       'bsl_selected_city_resolved_longitude';
   static const Duration _geocodingTimeout = Duration(seconds: 4);
 
-  final AddressGeocodingService _addressService;
+  final AddressGeocodingService addressService;
 
   CityContext({
-    AddressGeocodingService addressService = const AddressGeocodingService(),
-  }) : _addressService = addressService;
+    this.addressService = const AddressGeocodingService(),
+  });
 
   String _selectedCity = 'Pale';
 
@@ -98,7 +98,7 @@ class CityContext extends ChangeNotifier {
     }
 
     try {
-      final result = await _addressService
+      final result = await addressService
           .searchAddress(input: area.geocodingQuery)
           .timeout(_geocodingTimeout, onTimeout: () => null);
 
