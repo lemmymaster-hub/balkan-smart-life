@@ -11,7 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class _FakeAddressGeocodingService extends AddressGeocodingService {
   final AddressSearchResult? result;
 
-  const _FakeAddressGeocodingService(this.result);
+  _FakeAddressGeocodingService(this.result);
 
   @override
   Future<AddressSearchResult?> searchAddress({
@@ -32,12 +32,12 @@ void main() {
     });
 
     test('izabrana opština dobija razriješene koordinate prije aktivacije', () async {
-      const resolvedLocation = AddressSearchResult(
+      final resolvedLocation = AddressSearchResult(
         label: 'Mrkonjić Grad',
         location: LatLng(latitude: 44.417, longitude: 17.086),
       );
       final context = CityContext(
-        addressService: const _FakeAddressGeocodingService(resolvedLocation),
+        addressService: _FakeAddressGeocodingService(resolvedLocation),
       );
 
       await context.setCity('Mrkonjić Grad');
@@ -51,12 +51,12 @@ void main() {
     });
 
     test('odbacuje geokoderski rezultat izvan Bosne i Hercegovine', () async {
-      const outsideBosnia = AddressSearchResult(
+      final outsideBosnia = AddressSearchResult(
         label: 'Teslić',
         location: LatLng(latitude: 50.0, longitude: 14.0),
       );
       final context = CityContext(
-        addressService: const _FakeAddressGeocodingService(outsideBosnia),
+        addressService: _FakeAddressGeocodingService(outsideBosnia),
       );
 
       await context.setCity('Teslić');
