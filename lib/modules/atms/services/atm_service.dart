@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:geocoding/geocoding.dart' as geo;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -18,13 +17,21 @@ class AtmServiceException implements Exception {
 class AtmService {
   static const double defaultRadiusKilometers = 10;
 
+  // Publishable Supabase keys are intended for client applications. Database
+  // access is restricted to the read-only bsl_nearby_atms_map RPC.
+  static const String _supabaseUrl =
+      'https://jkzjktrnqtkpdiiugfar.supabase.co';
+  static const String _supabasePublishableKey =
+      'sb_publishable_3s2pD65jngWSus-6wV-jpw_vXynI3oJ';
+
   static const List<String> _overpassEndpoints = [
     'https://overpass-api.de/api/interpreter',
     'https://overpass.private.coffee/api/interpreter',
   ];
 
-  static const Duration _endpointTimeout = Duration(seconds: 14);
-  static const Duration _cacheMaxAge = Duration(days: 7);
+  static const Duration _supabaseTimeout = Duration(seconds: 9);
+  static const Duration _overpassTimeout = Duration(seconds: 13);
+  static const Duration _cacheMaxAge = Duration(days: 30);
 
   final http.Client _client;
 
@@ -35,6 +42,155 @@ class AtmService {
     required double longitude,
     double radiusKilometers = defaultRadiusKilometers,
     String cityHint = '',
+  }) async {
+    Object? supabaseError;
+
+    try {
+      final atms = await _loadFromSupabase(
+        latitude: latitude,
+        longitude: longitude,
+        radiusKilometers: radiusKilometers,
+      );
+
+      if (atms.isNotEmpty) {
+        await _writeCache(
+          atms,
+          latitude: latitude,
+          longitude: longitude,
+          radiusKilometers: radiusKilometers,
+        );
+        return atms;
+      }
+    } catch (error) {
+      supabaseError = error;
+    }
+
+    // A recent BSL cache is preferred over a live public Overpass request.
+    // This keeps the ATM map useful during short Supabase/network outages.
+    final cached = await _readCache(
+      latitude: latitude,
+      longitude: longitude,
+      radiusKilometers: radiusKilometers,
+    );
+    if (cached.isNotEmpty) return cached;
+
+    Object? overpassError;
+    try {
+      final osm = await _loadFromOverpass(
+        latitude: latitude,
+        longitude: longitude,
+        radiusKilometers: radiusKilometers,
+        cityHint: cityHint,
+      );
+      if (osm.isNotEmpty) {
+        await _writeCache(
+          osm,
+          latitude: latitude,
+          longitude: longitude,
+          radiusKilometers: radiusKilometers,
+        );
+        return osm;
+      }
+    } catch (error) {
+      overpassError = error;
+    }
+
+    throw AtmServiceException(
+      'Mreža bankomata trenutno nije dostupna. Pokušaj ponovo. '
+      '(${supabaseError ?? overpassError ?? 'nema podataka'})',
+    );
+  }
+
+  Future<List<AtmLocation>> _loadFromSupabase({
+    required double latitude,
+    required double longitude,
+    required double radiusKilometers,
+  }) async {
+    final response = await _client
+        .post(
+          Uri.parse('$_supabaseUrl/rest/v1/rpc/bsl_nearby_atms_map'),
+          headers: const {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'apikey': _supabasePublishableKey,
+          },
+          body: jsonEncode({
+            'p_lat': latitude,
+            'p_lon': longitude,
+            'p_radius_m': (radiusKilometers * 1000).round(),
+          }),
+        )
+        .timeout(_supabaseTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError('Supabase HTTP ${response.statusCode}');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List) {
+      throw const FormatException('Supabase ATM odgovor nije lista.');
+    }
+
+    final result = <AtmLocation>[];
+    for (final raw in decoded) {
+      if (raw is! Map) continue;
+      final row = Map<String, dynamic>.from(raw);
+      final lat = _asDouble(row['latitude']);
+      final lon = _asDouble(row['longitude']);
+      if (lat == null || lon == null) continue;
+
+      final distance = BslCities.distanceInKilometers(
+        fromLatitude: latitude,
+        fromLongitude: longitude,
+        toLatitude: lat,
+        toLongitude: lon,
+      );
+      if (distance > radiusKilometers + 0.2) continue;
+
+      final bank = _text(row['bank_brand']);
+      final source = _text(row['source']);
+      result.add(
+        AtmLocation(
+          id: _text(row['location_id']).isEmpty
+              ? 'bsl_${lat}_$lon'
+              : _text(row['location_id']),
+          bankName: bank.isEmpty ? 'Ostali bankomati' : bank,
+          name: _text(row['name']),
+          address: _text(row['address']),
+          city: _text(row['city']),
+          latitude: lat,
+          longitude: lon,
+          cashDeposit: row['cash_deposit'] == true,
+          is24h: row['is_24h'] == true,
+          source: source.isEmpty ? 'BSL Supabase' : source,
+        ),
+      );
+    }
+
+    result.sort((a, b) {
+      final da = BslCities.distanceInKilometers(
+        fromLatitude: latitude,
+        fromLongitude: longitude,
+        toLatitude: a.latitude,
+        toLongitude: a.longitude,
+      );
+      final db = BslCities.distanceInKilometers(
+        fromLatitude: latitude,
+        fromLongitude: longitude,
+        toLatitude: b.latitude,
+        toLongitude: b.longitude,
+      );
+      return da.compareTo(db);
+    });
+
+    return result;
+  }
+
+  Future<List<AtmLocation>> _loadFromOverpass({
+    required double latitude,
+    required double longitude,
+    required double radiusKilometers,
+    required String cityHint,
   }) async {
     final radiusMeters = (radiusKilometers * 1000).round();
     final query = '''
@@ -47,7 +203,6 @@ out center tags;
 ''';
 
     Object? lastError;
-
     for (final endpoint in _overpassEndpoints) {
       try {
         final response = await _client
@@ -57,79 +212,30 @@ out center tags;
                 'Accept': 'application/json',
                 'Content-Type':
                     'application/x-www-form-urlencoded; charset=UTF-8',
-                'User-Agent': 'BalkanSmartLife/1.0 ATM module',
+                'User-Agent': 'BalkanSmartLife/1.0 ATM fallback',
               },
               body: {'data': query},
             )
-            .timeout(_endpointTimeout);
+            .timeout(_overpassTimeout);
 
         if (response.statusCode < 200 || response.statusCode >= 300) {
           lastError = 'HTTP ${response.statusCode} @ $endpoint';
           continue;
         }
 
-        final decoded = jsonDecode(response.body);
-        final osm = parseOverpassPayload(
-          decoded,
+        return parseOverpassPayload(
+          jsonDecode(response.body),
           centerLatitude: latitude,
           centerLongitude: longitude,
           radiusKilometers: radiusKilometers,
           cityHint: cityHint,
         );
-
-        final supplements = await _verifiedSupplements(
-          centerLatitude: latitude,
-          centerLongitude: longitude,
-          radiusKilometers: radiusKilometers,
-          cityHint: cityHint,
-        );
-
-        final merged = _mergeAndSort(
-          [...osm, ...supplements],
-          centerLatitude: latitude,
-          centerLongitude: longitude,
-          radiusKilometers: radiusKilometers,
-        );
-
-        await _writeCache(
-          merged,
-          latitude: latitude,
-          longitude: longitude,
-          radiusKilometers: radiusKilometers,
-        );
-
-        return merged;
       } catch (error) {
         lastError = error;
       }
     }
 
-    final cached = await _readCache(
-      latitude: latitude,
-      longitude: longitude,
-      radiusKilometers: radiusKilometers,
-    );
-
-    final supplements = await _verifiedSupplements(
-      centerLatitude: latitude,
-      centerLongitude: longitude,
-      radiusKilometers: radiusKilometers,
-      cityHint: cityHint,
-    );
-
-    final fallback = _mergeAndSort(
-      [...cached, ...supplements],
-      centerLatitude: latitude,
-      centerLongitude: longitude,
-      radiusKilometers: radiusKilometers,
-    );
-
-    if (fallback.isNotEmpty) return fallback;
-
-    throw AtmServiceException(
-      'Mreža bankomata trenutno nije dostupna. Pokušaj ponovo. '
-      '(${lastError ?? 'nema odgovora'})',
-    );
+    throw StateError('Overpass nije dostupan: ${lastError ?? 'nema odgovora'}');
   }
 
   List<AtmLocation> parseOverpassPayload(
@@ -205,137 +311,11 @@ out center tags;
             _yes(tags['cash_deposit']) ||
             _yes(tags['deposit']),
         is24h: _isAlwaysOpen(_text(tags['opening_hours'])),
+        source: 'OpenStreetMap fallback',
       );
     }
 
     return byCoordinateAndBank.values.toList(growable: false);
-  }
-
-  Future<List<AtmLocation>> _verifiedSupplements({
-    required double centerLatitude,
-    required double centerLongitude,
-    required double radiusKilometers,
-    required String cityHint,
-  }) async {
-    final normalizedCity = BslCities.normalize(cityHint);
-    final nearPale = normalizedCity.contains('pale') ||
-        BslCities.distanceInKilometers(
-              fromLatitude: centerLatitude,
-              fromLongitude: centerLongitude,
-              toLatitude: 43.8163,
-              toLongitude: 18.5695,
-            ) <=
-            radiusKilometers + 3;
-
-    if (!nearPale) return const [];
-
-    final result = <AtmLocation>[
-      const AtmLocation(
-        id: 'verified_mf_banka_pale',
-        bankName: 'MF banka',
-        name: 'MF banka bankomat',
-        address: 'Pale',
-        city: 'Pale',
-        latitude: 43.8133125,
-        longitude: 18.5721875,
-        is24h: true,
-        source: 'BSL verified',
-      ),
-    ];
-
-    final postanska = await _geocodeSupplement(
-      id: 'verified_bps_pale',
-      bankName: 'Banka Poštanska štedionica',
-      name: 'Banka Poštanska štedionica bankomat',
-      address: 'Vuka Karadžića bb',
-      city: 'Pale',
-      query:
-          'Banka Poštanska štedionica, Vuka Karadžića bb, Pale, Bosnia and Herzegovina',
-    );
-    if (postanska != null) result.add(postanska);
-
-    return result;
-  }
-
-  Future<AtmLocation?> _geocodeSupplement({
-    required String id,
-    required String bankName,
-    required String name,
-    required String address,
-    required String city,
-    required String query,
-  }) async {
-    try {
-      final locations = await geo.locationFromAddress(query);
-      if (locations.isEmpty) return null;
-      final location = locations.first;
-      return AtmLocation(
-        id: id,
-        bankName: bankName,
-        name: name,
-        address: address,
-        city: city,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        source: 'BSL verified',
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  List<AtmLocation> _mergeAndSort(
-    Iterable<AtmLocation> values, {
-    required double centerLatitude,
-    required double centerLongitude,
-    required double radiusKilometers,
-  }) {
-    final result = <AtmLocation>[];
-
-    for (final atm in values) {
-      final distance = BslCities.distanceInKilometers(
-        fromLatitude: centerLatitude,
-        fromLongitude: centerLongitude,
-        toLatitude: atm.latitude,
-        toLongitude: atm.longitude,
-      );
-      if (distance > radiusKilometers + 0.2) continue;
-
-      final duplicateIndex = result.indexWhere((candidate) {
-        if (candidate.bankName != atm.bankName) return false;
-        final separation = BslCities.distanceInKilometers(
-          fromLatitude: candidate.latitude,
-          fromLongitude: candidate.longitude,
-          toLatitude: atm.latitude,
-          toLongitude: atm.longitude,
-        );
-        return separation < 0.12;
-      });
-
-      if (duplicateIndex == -1) {
-        result.add(atm);
-      } else if (atm.source == 'BSL verified') {
-        result[duplicateIndex] = atm;
-      }
-    }
-
-    result.sort((a, b) {
-      final da = BslCities.distanceInKilometers(
-        fromLatitude: centerLatitude,
-        fromLongitude: centerLongitude,
-        toLatitude: a.latitude,
-        toLongitude: a.longitude,
-      );
-      final db = BslCities.distanceInKilometers(
-        fromLatitude: centerLatitude,
-        fromLongitude: centerLongitude,
-        toLatitude: b.latitude,
-        toLongitude: b.longitude,
-      );
-      return da.compareTo(db);
-    });
-
-    return result;
   }
 
   Future<void> _writeCache(
@@ -346,16 +326,15 @@ out center tags;
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final key = _cacheKey(latitude, longitude, radiusKilometers);
       await prefs.setString(
-        key,
+        _cacheKey(latitude, longitude, radiusKilometers),
         jsonEncode({
           'savedAt': DateTime.now().millisecondsSinceEpoch,
           'items': atms.map(_toJson).toList(growable: false),
         }),
       );
     } catch (_) {
-      // Cache ne smije blokirati prikaz mape.
+      // Cache must never block the map.
     }
   }
 
@@ -366,7 +345,9 @@ out center tags;
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_cacheKey(latitude, longitude, radiusKilometers));
+      final raw = prefs.getString(
+        _cacheKey(latitude, longitude, radiusKilometers),
+      );
       if (raw == null || raw.isEmpty) return const [];
 
       final decoded = jsonDecode(raw);
@@ -420,7 +401,7 @@ out center tags;
       cashDeposit: json['cashDeposit'] == true,
       is24h: json['is24h'] == true,
       source: _text(json['source']).isEmpty
-          ? 'OpenStreetMap cache'
+          ? 'BSL ATM cache'
           : _text(json['source']),
     );
   }
@@ -430,9 +411,9 @@ out center tags;
     double longitude,
     double radiusKilometers,
   ) {
-    return 'bsl_atm_cache_'
-        '${latitude.toStringAsFixed(2)}_'
-        '${longitude.toStringAsFixed(2)}_'
+    return 'bsl_atm_cache_v2_'
+        '${latitude.toStringAsFixed(1)}_'
+        '${longitude.toStringAsFixed(1)}_'
         '${radiusKilometers.toStringAsFixed(0)}';
   }
 
@@ -460,13 +441,14 @@ out center tags;
       'mf banka': 'MF banka',
       'nasa banka': 'Naša banka',
       'postanska stedionica': 'Banka Poštanska štedionica',
+      'poštanska štedionica': 'Banka Poštanska štedionica',
       'komercijalna banka': 'Banka Poštanska štedionica',
       'komercijalno investiciona': 'KIB Banka',
       'kib': 'KIB Banka',
     };
 
     for (final entry in aliases.entries) {
-      if (value.contains(entry.key)) return entry.value;
+      if (value.contains(BslCities.normalize(entry.key))) return entry.value;
     }
 
     final clean = raw
