@@ -72,7 +72,8 @@ class CityContext extends ChangeNotifier {
     if (resolvedName == null ||
         latitude == null ||
         longitude == null ||
-        !BslAdministrativeAreas.same(resolvedName, area.displayName) ||
+        BslAdministrativeAreas.normalize(resolvedName) !=
+            BslAdministrativeAreas.normalize(area.displayName) ||
         !_isInsideBosniaAndHerzegovina(latitude, longitude)) {
       return;
     }
