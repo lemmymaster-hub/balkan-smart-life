@@ -73,12 +73,7 @@ class CityContext extends ChangeNotifier {
         latitude == null ||
         longitude == null ||
         !BslAdministrativeAreas.same(resolvedName, area.displayName) ||
-        !latitude.isFinite ||
-        !longitude.isFinite ||
-        latitude < -90 ||
-        latitude > 90 ||
-        longitude < -180 ||
-        longitude > 180) {
+        !_isInsideBosniaAndHerzegovina(latitude, longitude)) {
       return;
     }
 
@@ -106,8 +101,14 @@ class CityContext extends ChangeNotifier {
           .searchAddress(input: area.geocodingQuery)
           .timeout(_geocodingTimeout, onTimeout: () => null);
 
-      if (result == null) {
-        debugPrint('BSL CITY GEOCODING: nema rezultata za ${area.displayName}');
+      if (result == null ||
+          !_isInsideBosniaAndHerzegovina(
+            result.location.latitude,
+            result.location.longitude,
+          )) {
+        debugPrint(
+          'BSL CITY GEOCODING: nema validnog BiH rezultata za ${area.displayName}',
+        );
         return;
       }
 
@@ -134,5 +135,19 @@ class CityContext extends ChangeNotifier {
     await prefs.setString(_resolvedNameKey, city.name);
     await prefs.setDouble(_resolvedLatitudeKey, city.latitude);
     await prefs.setDouble(_resolvedLongitudeKey, city.longitude);
+  }
+
+  static bool _isInsideBosniaAndHerzegovina(
+    double latitude,
+    double longitude,
+  ) {
+    if (!latitude.isFinite || !longitude.isFinite) return false;
+
+    // Namjerno malo širi okvir od državne granice zbog centara opština i
+    // razlika između geokoderskih izvora.
+    return latitude >= 42.45 &&
+        latitude <= 45.35 &&
+        longitude >= 15.65 &&
+        longitude <= 19.70;
   }
 }
