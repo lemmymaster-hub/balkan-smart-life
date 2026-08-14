@@ -13,6 +13,18 @@ void main() {
       expect(query, isNot(contains('(around:')));
     });
 
+    test('mobilni sync koristi četiri BiH sektora bez radius upita', () {
+      final queries = EvChargerService.buildNationwideSectorQueries();
+
+      expect(queries, hasLength(4));
+      for (final query in queries) {
+        expect(query, contains('ISO3166-1'));
+        expect(query, contains('"BA"'));
+        expect(query, contains('charging_station'));
+        expect(query, isNot(contains('(around:')));
+      }
+    });
+
     test('parser zadržava aktivne punjače iz više gradova', () {
       final chargers = EvChargerService.parseNationwideOverpassResponse('''
 {
