@@ -21,6 +21,13 @@ class EvChargerService {
   static const _searchRadiusMeters = 20000;
   static const _nationalCacheKey = '__bih_nationwide__';
 
+  static const _bihSectors = <List<double>>[
+    [44.0, 15.5, 45.4, 17.7],
+    [44.0, 17.7, 45.4, 19.8],
+    [42.4, 15.5, 44.0, 17.7],
+    [42.4, 17.7, 44.0, 19.8],
+  ];
+
   final FirebaseFirestore _firestore;
   final http.Client _httpClient;
   final bool _ownsHttpClient;
@@ -70,39 +77,59 @@ class EvChargerService {
       return cached.chargers;
     }
 
-    try {
-      final response = await _requestOverpassQuery(
-        buildNationwideOverpassQuery(),
-      );
-      final chargers = parseNationwideOverpassResponse(
-        utf8.decode(response.bodyBytes),
-        sourceUpdatedAt: DateTime.now(),
-      );
+    final chargersById = <String, EvCharger>{};
+    Object? lastError;
+    var successfulSectors = 0;
+    final sourceUpdatedAt = DateTime.now();
 
-      _cache[_nationalCacheKey] = _CachedChargers(
-        chargers: chargers,
-        cachedAt: DateTime.now(),
-      );
-      return chargers;
-    } on EvChargerException {
-      if (cached != null) return cached.chargers;
-      rethrow;
-    } on TimeoutException {
-      if (cached != null) return cached.chargers;
-      throw const EvChargerException(
-        'OSM servis trenutno predugo odgovara. Pokušaj ponovo.',
-      );
-    } on FormatException {
-      if (cached != null) return cached.chargers;
-      throw const EvChargerException(
-        'OSM je vratio podatke koje aplikacija ne može pročitati.',
-      );
-    } catch (error) {
+    for (final query in buildNationwideSectorQueries()) {
+      try {
+        final response = await _requestOverpassQuery(query);
+        final sectorChargers = parseNationwideOverpassResponse(
+          utf8.decode(response.bodyBytes),
+          sourceUpdatedAt: sourceUpdatedAt,
+        );
+
+        for (final charger in sectorChargers) {
+          chargersById[charger.id] = charger;
+        }
+        successfulSectors++;
+      } catch (error, stackTrace) {
+        lastError = error;
+        debugPrint('EV CHARGERS BIH SECTOR ERROR: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    }
+
+    if (successfulSectors == 0) {
       if (cached != null) return cached.chargers;
       throw EvChargerException(
-        'Punjači trenutno nisu dostupni. Provjeri internet vezu. ($error)',
+        'Javni OSM servisi trenutno ne odgovaraju za BiH. '
+        'Pokušaj ponovo. (${lastError ?? 'nepoznata greška'})',
       );
     }
+
+    // Ako je osvježavanje samo djelimično, postojeći puni cache je bolji od
+    // svježeg ali nepotpunog seta.
+    if (successfulSectors < _bihSectors.length && cached != null) {
+      return cached.chargers;
+    }
+
+    final chargers = chargersById.values.toList(growable: false)
+      ..sort((first, second) {
+        final cityOrder = BslCities.normalize(
+          first.city,
+        ).compareTo(BslCities.normalize(second.city));
+        if (cityOrder != 0) return cityOrder;
+        return first.name.compareTo(second.name);
+      });
+    final result = List<EvCharger>.unmodifiable(chargers);
+
+    _cache[_nationalCacheKey] = _CachedChargers(
+      chargers: result,
+      cachedAt: DateTime.now(),
+    );
+    return result;
   }
 
   /// Zadržano za testove i moguće city-scoped potrebe drugih ekrana.
@@ -196,6 +223,9 @@ class EvChargerService {
     _cache.remove(_nationalCacheKey);
   }
 
+  /// Puni nacionalni upit ostaje dostupan za testiranje i backend sync.
+  /// Mobilni klijent koristi sektorske upite ispod jer javni Overpass može
+  /// vratiti 504 za cijelu državu u jednom zahtjevu.
   static String buildNationwideOverpassQuery() {
     return '''
 [out:json][timeout:45];
@@ -205,6 +235,25 @@ area["ISO3166-1"="BA"][admin_level=2]->.bih;
 );
 out center tags;
 ''';
+  }
+
+  @visibleForTesting
+  static List<String> buildNationwideSectorQueries() {
+    return _bihSectors.map((sector) {
+      final south = sector[0];
+      final west = sector[1];
+      final north = sector[2];
+      final east = sector[3];
+
+      return '''
+[out:json][timeout:30];
+area["ISO3166-1"="BA"][admin_level=2]->.bih;
+(
+  nwr["amenity"="charging_station"]["access"!="private"]["access"!="no"](area.bih)($south,$west,$north,$east);
+);
+out center tags;
+''';
+    }).toList(growable: false);
   }
 
   static String buildOverpassQuery(BslCity city) {
