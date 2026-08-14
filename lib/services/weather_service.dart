@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../core/models/bsl_administrative_area.dart';
 import '../core/models/bsl_city.dart';
 
 class WeatherLocation {
@@ -89,14 +90,15 @@ class WeatherService {
         longitude: bslCity.longitude,
       );
     } else {
+      final searchName = BslAdministrativeAreas.geocodingNameFor(cityName);
       try {
         location = await searchCity(
-          cityName,
+          searchName,
           countryCode: preferredCountryCode,
         );
       } on WeatherCityNotFoundException {
         if (preferredCountryCode == null) rethrow;
-        location = await searchCity(cityName);
+        location = await searchCity(searchName);
       }
     }
 
