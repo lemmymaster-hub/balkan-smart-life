@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/models/bsl_administrative_area.dart';
 import '../../../core/models/bsl_city.dart';
 import '../models/ev_charger.dart';
 import '../models/ev_charger_verification.dart';
@@ -16,8 +17,16 @@ class EvChargerService {
   ];
   static const _verificationCollection = 'ev_charger_verifications';
   static const _cacheLifetime = Duration(minutes: 15);
-  static const _requestTimeout = Duration(seconds: 22);
+  static const _requestTimeout = Duration(seconds: 40);
   static const _searchRadiusMeters = 20000;
+  static const _nationalCacheKey = '__bih_nationwide__';
+
+  static const _bihSectors = <List<double>>[
+    [44.0, 15.5, 45.4, 17.7],
+    [44.0, 17.7, 45.4, 19.8],
+    [42.4, 15.5, 44.0, 17.7],
+    [42.4, 17.7, 44.0, 19.8],
+  ];
 
   final FirebaseFirestore _firestore;
   final http.Client _httpClient;
@@ -29,11 +38,14 @@ class EvChargerService {
       _httpClient = httpClient ?? http.Client(),
       _ownsHttpClient = httpClient == null;
 
+  /// EV mapa je nacionalna: bez obzira koji je grad trenutno odabran na
+  /// početnom ekranu, uvijek učitava sve javno mapirane punjače u BiH.
+  /// Parametar [city] se zadržava radi kompatibilnosti postojećeg UI-ja.
   Stream<List<EvCharger>> watchForCity(
     BslCity city, {
     bool forceRefresh = false,
   }) async* {
-    final osmChargers = await fetchForCity(city, forceRefresh: forceRefresh);
+    final osmChargers = await fetchNationwide(forceRefresh: forceRefresh);
     yield osmChargers;
 
     try {
@@ -43,10 +55,9 @@ class EvChargerService {
             .map(EvChargerVerification.fromFirestore)
             .toList(growable: false);
 
-        yield mergeVerifications(
+        yield mergeNationwideVerifications(
           chargers: osmChargers,
           verifications: verifications,
-          requestedCity: city,
         );
       }
     } catch (error, stackTrace) {
@@ -57,6 +68,71 @@ class EvChargerService {
     }
   }
 
+  Future<List<EvCharger>> fetchNationwide({
+    bool forceRefresh = false,
+  }) async {
+    final cached = _cache[_nationalCacheKey];
+
+    if (!forceRefresh && cached != null && !cached.isExpired) {
+      return cached.chargers;
+    }
+
+    final chargersById = <String, EvCharger>{};
+    Object? lastError;
+    var successfulSectors = 0;
+    final sourceUpdatedAt = DateTime.now();
+
+    for (final query in buildNationwideSectorQueries()) {
+      try {
+        final response = await _requestOverpassQuery(query);
+        final sectorChargers = parseNationwideOverpassResponse(
+          utf8.decode(response.bodyBytes),
+          sourceUpdatedAt: sourceUpdatedAt,
+        );
+
+        for (final charger in sectorChargers) {
+          chargersById[charger.id] = charger;
+        }
+        successfulSectors++;
+      } catch (error, stackTrace) {
+        lastError = error;
+        debugPrint('EV CHARGERS BIH SECTOR ERROR: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    }
+
+    if (successfulSectors == 0) {
+      if (cached != null) return cached.chargers;
+      throw EvChargerException(
+        'Javni OSM servisi trenutno ne odgovaraju za BiH. '
+        'Pokušaj ponovo. (${lastError ?? 'nepoznata greška'})',
+      );
+    }
+
+    // Ako je osvježavanje samo djelimično, postojeći puni cache je bolji od
+    // svježeg ali nepotpunog seta.
+    if (successfulSectors < _bihSectors.length && cached != null) {
+      return cached.chargers;
+    }
+
+    final chargers = chargersById.values.toList(growable: false)
+      ..sort((first, second) {
+        final cityOrder = BslCities.normalize(
+          first.city,
+        ).compareTo(BslCities.normalize(second.city));
+        if (cityOrder != 0) return cityOrder;
+        return first.name.compareTo(second.name);
+      });
+    final result = List<EvCharger>.unmodifiable(chargers);
+
+    _cache[_nationalCacheKey] = _CachedChargers(
+      chargers: result,
+      cachedAt: DateTime.now(),
+    );
+    return result;
+  }
+
+  /// Zadržano za testove i moguće city-scoped potrebe drugih ekrana.
   Future<List<EvCharger>> fetchForCity(
     BslCity city, {
     bool forceRefresh = false,
@@ -69,7 +145,7 @@ class EvChargerService {
     }
 
     try {
-      final response = await _requestOverpass(city);
+      final response = await _requestOverpassQuery(buildOverpassQuery(city));
 
       final chargers = parseOverpassResponse(
         utf8.decode(response.bodyBytes),
@@ -103,7 +179,7 @@ class EvChargerService {
     }
   }
 
-  Future<http.Response> _requestOverpass(BslCity city) async {
+  Future<http.Response> _requestOverpassQuery(String query) async {
     Object? lastError;
 
     for (final endpoint in _overpassEndpoints) {
@@ -115,7 +191,7 @@ class EvChargerService {
                 'Accept': 'application/json',
                 'User-Agent': 'BalkanSmartLife/1.0 (EV charger map)',
               },
-              body: {'data': buildOverpassQuery(city)},
+              body: {'data': query},
             )
             .timeout(_requestTimeout);
 
@@ -144,6 +220,40 @@ class EvChargerService {
     }
 
     _cache.remove(BslCities.normalize(city.name));
+    _cache.remove(_nationalCacheKey);
+  }
+
+  /// Puni nacionalni upit ostaje dostupan za testiranje i backend sync.
+  /// Mobilni klijent koristi sektorske upite ispod jer javni Overpass može
+  /// vratiti 504 za cijelu državu u jednom zahtjevu.
+  static String buildNationwideOverpassQuery() {
+    return '''
+[out:json][timeout:45];
+area["ISO3166-1"="BA"][admin_level=2]->.bih;
+(
+  nwr["amenity"="charging_station"]["access"!="private"]["access"!="no"](area.bih);
+);
+out center tags;
+''';
+  }
+
+  @visibleForTesting
+  static List<String> buildNationwideSectorQueries() {
+    return _bihSectors.map((sector) {
+      final south = sector[0];
+      final west = sector[1];
+      final north = sector[2];
+      final east = sector[3];
+
+      return '''
+[out:json][timeout:30];
+area["ISO3166-1"="BA"][admin_level=2]->.bih;
+(
+  nwr["amenity"="charging_station"]["access"!="private"]["access"!="no"](area.bih)($south,$west,$north,$east);
+);
+out center tags;
+''';
+    }).toList(growable: false);
   }
 
   static String buildOverpassQuery(BslCity city) {
@@ -154,6 +264,66 @@ class EvChargerService {
 );
 out center tags;
 ''';
+  }
+
+  @visibleForTesting
+  static List<EvCharger> parseNationwideOverpassResponse(
+    String responseBody, {
+    DateTime? sourceUpdatedAt,
+  }) {
+    final decoded = jsonDecode(responseBody);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Neispravan Overpass odgovor.');
+    }
+
+    final elements = decoded['elements'];
+    if (elements is! List) {
+      throw const FormatException('Overpass odgovor nema listu elemenata.');
+    }
+
+    final chargersById = <String, EvCharger>{};
+
+    for (final rawElement in elements) {
+      if (rawElement is! Map) continue;
+
+      final element = Map<String, dynamic>.from(rawElement);
+      final rawTags = element['tags'];
+      final tags = rawTags is Map
+          ? Map<String, dynamic>.from(rawTags)
+          : const <String, dynamic>{};
+
+      if (_isNotForCars(tags)) continue;
+
+      try {
+        var charger = EvCharger.fromOverpassElement(
+          element: element,
+          requestedCity: BslCities.bosniaAndHerzegovina,
+          sourceUpdatedAt: sourceUpdatedAt,
+        );
+
+        if (!charger.isActive) continue;
+
+        final cityName = _cityLabelFromTags(tags);
+        if (cityName.isNotEmpty) {
+          charger = charger.copyWith(city: cityName);
+        }
+
+        chargersById[charger.id] = charger;
+      } on FormatException {
+        // Jedan nepotpun OSM element ne smije zaustaviti cijeli modul.
+      }
+    }
+
+    final chargers = chargersById.values.toList(growable: false)
+      ..sort((first, second) {
+        final cityOrder = BslCities.normalize(
+          first.city,
+        ).compareTo(BslCities.normalize(second.city));
+        if (cityOrder != 0) return cityOrder;
+        return first.name.compareTo(second.name);
+      });
+
+    return List<EvCharger>.unmodifiable(chargers);
   }
 
   @visibleForTesting
@@ -210,6 +380,37 @@ out center tags;
   }
 
   @visibleForTesting
+  static List<EvCharger> mergeNationwideVerifications({
+    required List<EvCharger> chargers,
+    required List<EvChargerVerification> verifications,
+  }) {
+    final verificationById = {
+      for (final verification in verifications)
+        verification.chargerId: verification,
+    };
+
+    final merged =
+        chargers
+            .map((charger) {
+              final verification = verificationById[charger.id];
+              return verification == null || !verification.verified
+                  ? charger
+                  : verification.applyTo(charger);
+            })
+            .where((charger) => charger.isActive)
+            .toList(growable: false)
+          ..sort((first, second) {
+            final cityOrder = BslCities.normalize(
+              first.city,
+            ).compareTo(BslCities.normalize(second.city));
+            if (cityOrder != 0) return cityOrder;
+            return first.name.compareTo(second.name);
+          });
+
+    return List<EvCharger>.unmodifiable(merged);
+  }
+
+  @visibleForTesting
   static List<EvCharger> mergeVerifications({
     required List<EvCharger> chargers,
     required List<EvChargerVerification> verifications,
@@ -237,6 +438,32 @@ out center tags;
           ..sort((first, second) => first.name.compareTo(second.name));
 
     return List<EvCharger>.unmodifiable(merged);
+  }
+
+  static String _cityLabelFromTags(Map<String, dynamic> tags) {
+    final raw = [
+      tags['addr:city'],
+      tags['addr:place'],
+      tags['addr:municipality'],
+    ]
+        .map((value) => value?.toString().trim() ?? '')
+        .firstWhere((value) => value.isNotEmpty, orElse: () => '');
+
+    if (raw.isEmpty) return '';
+    final normalizedRaw = BslCities.normalize(raw);
+
+    for (final area in BslAdministrativeAreas.values) {
+      if (BslCities.normalize(area.displayName) == normalizedRaw) {
+        return area.displayName;
+      }
+      for (final alias in area.aliases) {
+        if (BslCities.normalize(alias) == normalizedRaw) {
+          return area.displayName;
+        }
+      }
+    }
+
+    return raw;
   }
 
   static bool _isNotForCars(Map<String, dynamic> tags) {

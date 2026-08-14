@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'bsl_administrative_area.dart';
+
 class BslCity {
   final String name;
   final double latitude;
@@ -21,6 +23,13 @@ abstract final class BslCities {
     longitude: 18.5695,
   );
 
+  static const BslCity bosniaAndHerzegovina = BslCity(
+    name: 'Bosna i Hercegovina',
+    latitude: 44.15,
+    longitude: 17.68,
+    mapZoom: 7.2,
+  );
+
   static const List<BslCity> values = [
     BslCity(name: 'Sarajevo', latitude: 43.8563, longitude: 18.4131),
     BslCity(name: 'Banja Luka', latitude: 44.7722, longitude: 17.1910),
@@ -34,7 +43,21 @@ abstract final class BslCities {
   ];
 
   static BslCity byName(String? name) {
-    return findExact(name ?? '') ?? pale;
+    final input = name ?? '';
+    final exact = findExact(input);
+    if (exact != null) return exact;
+
+    final administrativeArea = BslAdministrativeAreas.findExact(input);
+    if (administrativeArea != null) {
+      return BslCity(
+        name: administrativeArea.displayName,
+        latitude: bosniaAndHerzegovina.latitude,
+        longitude: bosniaAndHerzegovina.longitude,
+        mapZoom: bosniaAndHerzegovina.mapZoom,
+      );
+    }
+
+    return pale;
   }
 
   static BslCity? findExact(String input) {
