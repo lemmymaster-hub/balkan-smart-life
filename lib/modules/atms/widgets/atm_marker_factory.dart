@@ -20,12 +20,7 @@ abstract final class AtmMarkerFactory {
     );
     final center = const Offset(_canvasWidth / 2, 126);
 
-    _drawGlow(
-      canvas,
-      center: center,
-      color: accentColor,
-      selected: isSelected,
-    );
+    _drawGlow(canvas, center: center, color: accentColor, selected: isSelected);
 
     final outerPaint = Paint()
       ..color = const Color(0xF2070B18)
@@ -42,14 +37,10 @@ abstract final class AtmMarkerFactory {
       center - const Offset(11, 13),
       31,
       Paint()
-        ..shader = ui.Gradient.radial(
-          center - const Offset(11, 13),
-          34,
-          [
-            Colors.white.withValues(alpha: 0.18),
-            Colors.transparent,
-          ],
-        ),
+        ..shader = ui.Gradient.radial(center - const Offset(11, 13), 34, [
+          Colors.white.withValues(alpha: 0.18),
+          Colors.transparent,
+        ]),
     );
 
     _drawAtmIcon(canvas, center: center, accentColor: accentColor);
@@ -122,10 +113,7 @@ abstract final class AtmMarkerFactory {
           fontFamily: icon.fontFamily,
           package: icon.fontPackage,
           shadows: [
-            Shadow(
-              color: accentColor.withValues(alpha: 0.55),
-              blurRadius: 10,
-            ),
+            Shadow(color: accentColor.withValues(alpha: 0.55), blurRadius: 10),
           ],
         ),
       ),
@@ -134,10 +122,7 @@ abstract final class AtmMarkerFactory {
 
     painter.paint(
       canvas,
-      Offset(
-        center.dx - painter.width / 2,
-        center.dy - painter.height / 2,
-      ),
+      Offset(center.dx - painter.width / 2, center.dy - painter.height / 2),
     );
   }
 }

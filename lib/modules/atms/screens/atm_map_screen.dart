@@ -444,27 +444,25 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
 
       final created = await controller.addMarkers(
         atms
-            .map(
-              (atm) {
-                final selected = atm.id == _selectedAtm?.id;
-                return MarkerOptions(
-                  position: atm.position,
-                  icon:
-                      _markerIcons[_markerKey(
-                        atm.bankName,
-                        selected: selected,
-                      )] ??
-                      ImageDescriptor.defaultImage,
-                  anchor: const MarkerAnchor(u: 0.5, v: 1),
-                  consumeTapEvents: true,
-                  zIndex: selected ? 2 : 1,
-                  infoWindow: InfoWindow(
-                    title: atm.displayName,
-                    snippet: atm.subtitle,
-                  ),
-                );
-              },
-            )
+            .map((atm) {
+              final selected = atm.id == _selectedAtm?.id;
+              return MarkerOptions(
+                position: atm.position,
+                icon:
+                    _markerIcons[_markerKey(
+                      atm.bankName,
+                      selected: selected,
+                    )] ??
+                    ImageDescriptor.defaultImage,
+                anchor: const MarkerAnchor(u: 0.5, v: 1),
+                consumeTapEvents: true,
+                zIndex: selected ? 2 : 1,
+                infoWindow: InfoWindow(
+                  title: atm.displayName,
+                  snippet: atm.subtitle,
+                ),
+              );
+            })
             .toList(growable: false),
       );
 
@@ -522,20 +520,44 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
   Future<void> _chooseNavigation(AtmLocation atm) async {
     final mode = await showModalBottomSheet<BslNavigationTravelMode>(
       context: context,
-      backgroundColor: BslColors.bgDark,
-      showDragHandle: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black54,
+      elevation: 0,
+      isScrollControlled: false,
+      showDragHandle: false,
       builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 4, 18, 22),
+        top: false,
+        child: Container(
+          decoration: BslDecorations.bottomDock(),
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 22),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Kako ideš do bankomata?',
-                style: BslTextStyles.title.copyWith(fontSize: 20),
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white38,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 18),
+              const Row(
+                children: [
+                  Icon(Icons.atm_rounded, color: BslColors.cyan, size: 26),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Kako ideš do bankomata?',
+                      style: BslTextStyles.title,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
@@ -609,21 +631,19 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
 
   void _startSpeedTracking() {
     _speedSubscription?.cancel();
-    _speedSubscription = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 2,
-      ),
-    ).listen(
-      (position) {
-        if (!mounted) return;
-        final kmh = position.speed.isFinite && position.speed > 0
-            ? position.speed * 3.6
-            : 0.0;
-        setState(() => _speedKmh = kmh);
-      },
-      onError: (_) {},
-    );
+    _speedSubscription =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.bestForNavigation,
+            distanceFilter: 2,
+          ),
+        ).listen((position) {
+          if (!mounted) return;
+          final kmh = position.speed.isFinite && position.speed > 0
+              ? position.speed * 3.6
+              : 0.0;
+          setState(() => _speedKmh = kmh);
+        }, onError: (_) {});
   }
 
   Future<void> _stopNavigation() async {
@@ -656,9 +676,7 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
     );
   }
 
-  Future<void> _unregisterMarkerImages(
-    Iterable<ImageDescriptor> images,
-  ) async {
+  Future<void> _unregisterMarkerImages(Iterable<ImageDescriptor> images) async {
     for (final image in images.toSet()) {
       if (image.registeredImageId == null) continue;
       try {
@@ -830,7 +848,8 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
                         navigationVisible: navigationVisible,
                         navigation: _navigation,
                         speedKmh: _speedKmh,
-                        onNavigate: () => unawaited(_chooseNavigation(selected)),
+                        onNavigate: () =>
+                            unawaited(_chooseNavigation(selected)),
                         onStop: () => unawaited(_stopNavigation()),
                         onRetry: () => unawaited(
                           _navigation.retry(

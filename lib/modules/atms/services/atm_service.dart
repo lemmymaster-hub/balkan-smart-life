@@ -19,8 +19,7 @@ class AtmService {
 
   // Publishable Supabase keys are intended for client applications. Database
   // access is restricted to the read-only bsl_nearby_atms_map RPC.
-  static const String _supabaseUrl =
-      'https://jkzjktrnqtkpdiiugfar.supabase.co';
+  static const String _supabaseUrl = 'https://jkzjktrnqtkpdiiugfar.supabase.co';
   static const String _supabasePublishableKey =
       'sb_publishable_3s2pD65jngWSus-6wV-jpw_vXynI3oJ';
 
@@ -193,7 +192,8 @@ class AtmService {
     required String cityHint,
   }) async {
     final radiusMeters = (radiusKilometers * 1000).round();
-    final query = '''
+    final query =
+        '''
 [out:json][timeout:25];
 (
   nwr["amenity"="atm"](around:$radiusMeters,$latitude,$longitude);
@@ -259,9 +259,11 @@ out center tags;
           ? Map<String, dynamic>.from(rawTags)
           : const <String, dynamic>{};
 
-      final lat = _asDouble(element['lat']) ??
+      final lat =
+          _asDouble(element['lat']) ??
           _asDouble((element['center'] as Map?)?['lat']);
-      final lon = _asDouble(element['lon']) ??
+      final lon =
+          _asDouble(element['lon']) ??
           _asDouble((element['center'] as Map?)?['lon']);
       if (lat == null || lon == null) continue;
 
@@ -307,7 +309,8 @@ out center tags;
         city: city,
         latitude: lat,
         longitude: lon,
-        cashDeposit: _yes(tags['cash_in']) ||
+        cashDeposit:
+            _yes(tags['cash_in']) ||
             _yes(tags['cash_deposit']) ||
             _yes(tags['deposit']),
         is24h: _isAlwaysOpen(_text(tags['opening_hours'])),
@@ -373,17 +376,17 @@ out center tags;
   }
 
   static Map<String, Object?> _toJson(AtmLocation atm) => {
-        'id': atm.id,
-        'bankName': atm.bankName,
-        'name': atm.name,
-        'address': atm.address,
-        'city': atm.city,
-        'latitude': atm.latitude,
-        'longitude': atm.longitude,
-        'cashDeposit': atm.cashDeposit,
-        'is24h': atm.is24h,
-        'source': atm.source,
-      };
+    'id': atm.id,
+    'bankName': atm.bankName,
+    'name': atm.name,
+    'address': atm.address,
+    'city': atm.city,
+    'latitude': atm.latitude,
+    'longitude': atm.longitude,
+    'cashDeposit': atm.cashDeposit,
+    'is24h': atm.is24h,
+    'source': atm.source,
+  };
 
   static AtmLocation? _fromJson(Map<String, dynamic> json) {
     final latitude = _asDouble(json['latitude']);
