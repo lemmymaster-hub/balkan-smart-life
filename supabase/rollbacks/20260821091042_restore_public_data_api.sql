@@ -1,4 +1,5 @@
--- Emergency compatibility rollback for the dedicated API schema migration.
+-- Emergency compatibility rollback for migration 20260821091042.
+-- Restores the former public Data API alongside the dedicated api schema.
 -- This intentionally widens the exposed surface and should only be used to
 -- restore service while the dedicated api schema issue is investigated.
 

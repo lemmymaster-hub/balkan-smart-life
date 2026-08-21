@@ -1,3 +1,4 @@
+-- Production migration version: 20260821091042.
 -- Harden the ATM Data API without changing its REST path or response shape.
 -- Only the dedicated api schema is exposed through PostgREST. The raw tables,
 -- PostGIS objects and privileged implementation remain outside the Data API.

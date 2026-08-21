@@ -36,7 +36,7 @@ again).
 ## Emergency rollback
 
 If clients cannot reach the dedicated `api` schema, apply
-`rollbacks/20260821085529_restore_public_data_api.sql`. It temporarily
+`rollbacks/20260821091042_restore_public_data_api.sql`. It temporarily
 exposes both `public` and `api`, restoring compatibility for old and new
 clients while keeping the bounded wrapper. This is a security downgrade and
 should be used only for incident recovery.
