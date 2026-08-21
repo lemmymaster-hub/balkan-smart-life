@@ -8,6 +8,7 @@ It contains:
   and grants in `schema.sql`;
 - all application ATM rows in `data/*.json`;
 - a manifest with expected table counts;
+- the pre-hardening deployed Edge Function sources in `functions/`;
 - a restore script that recreates derived PostGIS geography columns from
   latitude and longitude.
 

@@ -73,6 +73,38 @@ begin
     raise exception 'anon needs USAGE on the api schema';
   end if;
 
+  if has_function_privilege(
+    'anon',
+    'api.bsl_upsert_osm_atm_candidates(jsonb)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'authenticated',
+    'api.bsl_upsert_osm_atm_candidates(jsonb)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'anon',
+    'api.bsl_match_osm_atms()',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'authenticated',
+    'api.bsl_match_osm_atms()',
+    'EXECUTE'
+  ) then
+    raise exception 'Client roles must not execute OSM sync routines';
+  end if;
+
+  if not has_function_privilege(
+    'service_role',
+    'api.bsl_upsert_osm_atm_candidates(jsonb)',
+    'EXECUTE'
+  ) or not has_function_privilege(
+    'service_role',
+    'api.bsl_match_osm_atms()',
+    'EXECUTE'
+  ) then
+    raise exception 'service_role needs the OSM sync routines';
+  end if;
+
   if exists (
     select 1
     from information_schema.tables
@@ -152,5 +184,24 @@ begin
   end if;
 end;
 $anon_test$;
+
+rollback;
+
+-- The service role can reach the bounded sync API without mutating data.
+begin;
+set local role service_role;
+
+do $service_test$
+declare
+  v_affected integer;
+begin
+  select api.bsl_upsert_osm_atm_candidates('[]'::jsonb)
+  into v_affected;
+
+  if v_affected <> 0 then
+    raise exception 'Empty service upsert affected % rows', v_affected;
+  end if;
+end;
+$service_test$;
 
 rollback;

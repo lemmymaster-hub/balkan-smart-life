@@ -26,6 +26,8 @@ Project reference: `jkzjktrnqtkpdiiugfar`
   five seconds of database execution, and 500 returned rows.
 - The former `public.bsl_nearby_atms_map` routine remains as a service-role
   compatibility wrapper and is not callable by client roles.
+- The OSM sync Edge Function uses two bounded `api` RPCs granted only to
+  `service_role`; anonymous and authenticated clients cannot execute them.
 
 The migration intentionally sets `pgrst.db_schemas=api` on the
 `authenticator` role. This is a manual Data API schema override; future
