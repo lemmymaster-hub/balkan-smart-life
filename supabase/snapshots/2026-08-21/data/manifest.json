@@ -1,0 +1,58 @@
+{
+  "project_id": "jkzjktrnqtkpdiiugfar",
+  "captured_at_utc": "2026-08-21",
+  "excluded_generated_columns": {
+    "bsl_atm_locations": [
+      "geom"
+    ],
+    "bsl_osm_atm_candidates": [
+      "geom"
+    ]
+  },
+  "tables": {
+    "bsl_atm_devices": {
+      "rows": 371,
+      "files": [
+        "bsl_atm_devices.json"
+      ]
+    },
+    "bsl_atm_locations": {
+      "rows": 362,
+      "files": [
+        "bsl_atm_locations.json"
+      ]
+    },
+    "bsl_atm_sources": {
+      "rows": 24,
+      "files": [
+        "bsl_atm_sources.json"
+      ]
+    },
+    "bsl_banks": {
+      "rows": 22,
+      "files": [
+        "bsl_banks.json"
+      ]
+    },
+    "bsl_osm_atm_candidates": {
+      "rows": 1433,
+      "files": [
+        "bsl_osm_atm_candidates_0001.json",
+        "bsl_osm_atm_candidates_0002.json",
+        "bsl_osm_atm_candidates_0003.json",
+        "bsl_osm_atm_candidates_0004.json",
+        "bsl_osm_atm_candidates_0005.json",
+        "bsl_osm_atm_candidates_0006.json",
+        "bsl_osm_atm_candidates_0007.json",
+        "bsl_osm_atm_candidates_0008.json",
+        "bsl_osm_atm_candidates_0009.json",
+        "bsl_osm_atm_candidates_0010.json",
+        "bsl_osm_atm_candidates_0011.json",
+        "bsl_osm_atm_candidates_0012.json",
+        "bsl_osm_atm_candidates_0013.json",
+        "bsl_osm_atm_candidates_0014.json",
+        "bsl_osm_atm_candidates_0015.json"
+      ]
+    }
+  }
+}

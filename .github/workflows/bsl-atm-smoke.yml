@@ -1,0 +1,92 @@
+name: BSL ATM backend smoke test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/bsl-atm-smoke.yml"
+      - "supabase/**"
+  schedule:
+    - cron: "17 1,9,17 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  atm-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      BSL_SUPABASE_URL: https://jkzjktrnqtkpdiiugfar.supabase.co
+      BSL_SUPABASE_PUBLISHABLE_KEY: sb_publishable_3s2pD65jngWSus-6wV-jpw_vXynI3oJ
+
+    steps:
+      - name: Check Sarajevo ATM response
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          http_code="$(
+            curl \
+              --silent \
+              --show-error \
+              --output "$response_file" \
+              --write-out "%{http_code}" \
+              --request POST \
+              "${BSL_SUPABASE_URL}/rest/v1/rpc/bsl_nearby_atms_map" \
+              --header "Accept: application/json" \
+              --header "Content-Type: application/json" \
+              --header "apikey: ${BSL_SUPABASE_PUBLISHABLE_KEY}" \
+              --data '{"p_lat":43.8563,"p_lon":18.4131,"p_radius_m":10000}'
+          )"
+
+          if [[ "$http_code" != "200" ]]; then
+            jq . "$response_file" || true
+            echo "Unexpected HTTP status: $http_code"
+            exit 1
+          fi
+
+          jq -e '
+            type == "array"
+            and length > 0
+            and length <= 500
+            and all(.[];
+              has("location_id")
+              and has("latitude")
+              and has("longitude")
+              and has("distance_m")
+            )
+          ' "$response_file" >/dev/null
+
+      - name: Reject an oversized radius
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          http_code="$(
+            curl \
+              --silent \
+              --show-error \
+              --output "$response_file" \
+              --write-out "%{http_code}" \
+              --request POST \
+              "${BSL_SUPABASE_URL}/rest/v1/rpc/bsl_nearby_atms_map" \
+              --header "Accept: application/json" \
+              --header "Content-Type: application/json" \
+              --header "Content-Profile: api" \
+              --header "apikey: ${BSL_SUPABASE_PUBLISHABLE_KEY}" \
+              --data '{"p_lat":43.8563,"p_lon":18.4131,"p_radius_m":50001}'
+          )"
+
+          if [[ "$http_code" -lt 400 || "$http_code" -ge 500 ]]; then
+            jq . "$response_file" || true
+            echo "Invalid radius should produce a 4xx response, got $http_code"
+            exit 1
+          fi
