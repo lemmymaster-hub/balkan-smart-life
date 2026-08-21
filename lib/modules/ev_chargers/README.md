@@ -6,6 +6,13 @@ provjereni sloj za ispravke i deaktivaciju zastarjelih zapisa.
 
 ## Firestore verifikacije
 
+Mobilni klijent odmah učitava zadnji provjereni BiH OSM snapshot iz APK-a, a
+zatim ga u pozadini osvježava jednim ograničenim državnim upitom. Koristi
+aktivne `lz4.overpass-api.de`, `overpass-api.de` i `overpass.private.coffee`
+endpoint-e, uz rok od 20 sekundi po pokušaju. Time ekran više ne čeka serijski
+na ugašeni Mail.ru endpoint, ne šalje četiri paralelna zahtjeva i ostaje
+upotrebljiv kada su javni Overpass serveri privremeno preopterećeni.
+
 Kolekcija se zove `ev_charger_verifications`. Preporučeni ID dokumenta jednak
 je BSL ID-u OSM objekta, na primjer `osm_node_6167066542`. Može se koristiti i
 drugi ID dokumenta ako polje `chargerId` sadrži taj BSL ID.

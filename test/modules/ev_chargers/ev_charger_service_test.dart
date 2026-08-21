@@ -4,9 +4,118 @@ import 'package:bsl_app/modules/ev_chargers/models/ev_charger_map_policy.dart';
 import 'package:bsl_app/modules/ev_chargers/models/ev_charger_verification.dart';
 import 'package:bsl_app/modules/ev_chargers/services/ev_charger_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 void main() {
   group('EvChargerService', () {
+    test('koristi aktivni Overpass endpoint umjesto ugašenog Mail.ru', () async {
+      final requestedHosts = <String>[];
+      final service = EvChargerService(
+        httpClient: MockClient((request) async {
+          requestedHosts.add(request.url.host);
+          return http.Response('{"elements": []}', 200);
+        }),
+      );
+
+      addTearDown(service.dispose);
+      await service.fetchForCity(BslCities.byName('Prijedor'));
+
+      expect(requestedHosts, ['lz4.overpass-api.de']);
+    });
+
+    test('prelazi na rezervni endpoint nakon HTTP greške', () async {
+      final requestedHosts = <String>[];
+      final service = EvChargerService(
+        httpClient: MockClient((request) async {
+          requestedHosts.add(request.url.host);
+          if (request.url.host == 'primary.example') {
+            return http.Response('privremeno nedostupno', 503);
+          }
+          return http.Response('{"elements": []}', 200);
+        }),
+        overpassEndpoints: const [
+          'https://primary.example/api/interpreter',
+          'https://fallback.example/api/interpreter',
+        ],
+      );
+
+      addTearDown(service.dispose);
+      await service.fetchForCity(BslCities.byName('Prijedor'));
+
+      expect(requestedHosts, ['primary.example', 'fallback.example']);
+    });
+
+    test('nacionalno osvježavanje šalje jedan ograničen OSM upit', () async {
+      var requestCount = 0;
+      String? requestBody;
+      final service = EvChargerService(
+        httpClient: MockClient((request) async {
+          requestCount++;
+          requestBody = request.body;
+          return http.Response('''
+{
+  "elements": [
+    {
+      "type": "node",
+      "id": 502,
+      "lat": 44.9799,
+      "lon": 16.7140,
+      "tags": {"amenity": "charging_station"}
+    }
+  ]
+}
+''', 200);
+        }),
+        overpassEndpoints: const [
+          'https://overpass.private.coffee/api/interpreter',
+        ],
+      );
+
+      addTearDown(service.dispose);
+      await service.fetchNationwide();
+
+      expect(requestCount, 1);
+      expect(requestBody, contains('3602528142'));
+    });
+
+    test('ugrađeni OSM snapshot prikazuje punjače prije mreže', () async {
+      final service = EvChargerService(
+        httpClient: MockClient((request) async {
+          throw StateError('Mreža se ne smije čekati prije prvog rezultata.');
+        }),
+        bundledSnapshotLoader: () async => '''
+{
+  "osm3s": {"timestamp_osm_base": "2026-08-21T18:00:10Z"},
+  "elements": [
+    {
+      "type": "node",
+      "id": 501,
+      "lat": 44.9799,
+      "lon": 16.7140,
+      "tags": {
+        "amenity": "charging_station",
+        "name": "Prijedor test punjač",
+        "addr:city": "Prijedor"
+      }
+    }
+  ]
+}
+''',
+      );
+
+      addTearDown(service.dispose);
+      final firstResult = await service
+          .watchForCity(BslCities.byName('Prijedor'))
+          .first;
+
+      expect(firstResult.single.name, 'Prijedor test punjač');
+      expect(
+        firstResult.single.sourceUpdatedAt,
+        DateTime.parse('2026-08-21T18:00:10Z'),
+      );
+    });
+
     test('pretvara OSM elemente u punjače za izabrani grad', () {
       final chargers = EvChargerService.parseOverpassResponse(
         '''

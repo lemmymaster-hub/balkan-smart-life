@@ -65,6 +65,7 @@ flutter:
     - assets/images/bsl_logo.png
     - assets/images/bsl_ai_bulb.png
     - assets/maps/bsl_dark_map_style.json
+    - assets/data/bsl_ev_chargers_bih.json
     - assets/markers/bsl_parking_marker.png
     - assets/markers/bsl_navigation_car_marker.png
 
