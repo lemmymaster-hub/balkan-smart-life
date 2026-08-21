@@ -49,12 +49,16 @@ class EvChargerService {
     List<String>? overpassEndpoints,
     Duration requestTimeout = _defaultRequestTimeout,
     EvChargerSnapshotLoader? bundledSnapshotLoader,
-  }) : _firestore = firestore,
+  }) : // Publicni parametar ostaje `firestore`, bez izlaganja privatnog polja.
+       // ignore: prefer_initializing_formals
+       _firestore = firestore,
       _httpClient = httpClient ?? http.Client(),
       _ownsHttpClient = httpClient == null,
       _overpassEndpoints = List<Uri>.unmodifiable(
         (overpassEndpoints ?? _defaultOverpassEndpoints).map(Uri.parse),
       ),
+      // Testovi i pozivaoci koriste javni naziv `requestTimeout`.
+      // ignore: prefer_initializing_formals
       _requestTimeout = requestTimeout,
       _bundledSnapshotLoader =
           bundledSnapshotLoader ?? _loadBundledSnapshotAsset {
