@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/models/bsl_administrative_area.dart';
 import '../../../core/models/bsl_city.dart';
@@ -12,6 +13,8 @@ import '../models/ev_charger.dart';
 import '../models/ev_charger_verification.dart';
 
 typedef EvChargerSnapshotLoader = Future<String> Function();
+typedef EvChargerCachedSnapshotLoader = Future<String?> Function();
+typedef EvChargerCachedSnapshotWriter = Future<void> Function(String body);
 
 class EvChargerService {
   static const _defaultOverpassEndpoints = <String>[
@@ -24,9 +27,13 @@ class EvChargerService {
   static const _bihOverpassAreaId = 3602528142;
   static const _verificationCollection = 'ev_charger_verifications';
   static const _cacheLifetime = Duration(minutes: 15);
+  static const _persistedCacheLifetime = Duration(days: 30);
   static const _defaultRequestTimeout = Duration(seconds: 20);
   static const _searchRadiusMeters = 20000;
   static const _nationalCacheKey = '__bih_nationwide__';
+  static const _persistedSnapshotKey = 'bsl_ev_chargers_snapshot_v1';
+  static const _persistedSnapshotSavedAtKey =
+      'bsl_ev_chargers_snapshot_saved_at_v1';
 
   static const _bihSectors = <List<double>>[
     [44.0, 15.5, 45.4, 17.7],
@@ -41,6 +48,8 @@ class EvChargerService {
   final List<Uri> _overpassEndpoints;
   final Duration _requestTimeout;
   final EvChargerSnapshotLoader _bundledSnapshotLoader;
+  final EvChargerCachedSnapshotLoader _cachedSnapshotLoader;
+  final EvChargerCachedSnapshotWriter _cachedSnapshotWriter;
   final Map<String, _CachedChargers> _cache = {};
 
   EvChargerService({
@@ -49,6 +58,8 @@ class EvChargerService {
     List<String>? overpassEndpoints,
     Duration requestTimeout = _defaultRequestTimeout,
     EvChargerSnapshotLoader? bundledSnapshotLoader,
+    EvChargerCachedSnapshotLoader? cachedSnapshotLoader,
+    EvChargerCachedSnapshotWriter? cachedSnapshotWriter,
   }) : // Publicni parametar ostaje `firestore`, bez izlaganja privatnog polja.
        // ignore: prefer_initializing_formals
        _firestore = firestore,
@@ -61,7 +72,9 @@ class EvChargerService {
       // ignore: prefer_initializing_formals
       _requestTimeout = requestTimeout,
       _bundledSnapshotLoader =
-          bundledSnapshotLoader ?? _loadBundledSnapshotAsset {
+          bundledSnapshotLoader ?? _loadBundledSnapshotAsset,
+      _cachedSnapshotLoader = cachedSnapshotLoader ?? _loadPersistedSnapshot,
+      _cachedSnapshotWriter = cachedSnapshotWriter ?? _storePersistedSnapshot {
     if (_overpassEndpoints.isEmpty) {
       throw ArgumentError.value(
         overpassEndpoints,
@@ -78,10 +91,10 @@ class EvChargerService {
     BslCity city, {
     bool forceRefresh = false,
   }) async* {
-    var osmChargers = await _loadBundledChargers();
+    var osmChargers = await _loadBestLocalChargers();
     if (osmChargers.isNotEmpty) {
-      // Prvo prikaži provjereni OSM snapshot iz APK-a. Live osvježavanje ne
-      // smije ostaviti mapu praznom kada je javni Overpass preopterećen.
+      // Prvo prikaži noviji od ugrađenog i zadnjeg uspješnog lokalnog OSM
+      // snapshota. Live osvježavanje ne smije ostaviti mapu praznom.
       yield osmChargers;
     }
 
@@ -131,8 +144,9 @@ class EvChargerService {
       final response = await _requestOverpassQuery(
         buildNationwideOverpassQuery(),
       );
+      final responseBody = utf8.decode(response.bodyBytes);
       final chargers = parseNationwideOverpassResponse(
-        utf8.decode(response.bodyBytes),
+        responseBody,
       );
       if (chargers.isEmpty) {
         throw const EvChargerException(
@@ -144,6 +158,7 @@ class EvChargerService {
         chargers: chargers,
         cachedAt: DateTime.now(),
       );
+      await _savePersistedSnapshot(responseBody);
       return chargers;
     } catch (_) {
       if (cached != null) return cached.chargers;
@@ -162,8 +177,87 @@ class EvChargerService {
     }
   }
 
+  Future<List<EvCharger>> _loadBestLocalChargers() async {
+    final bundled = await _loadBundledChargers();
+
+    try {
+      final cachedBody = await _cachedSnapshotLoader();
+      if (cachedBody == null || cachedBody.trim().isEmpty) return bundled;
+
+      final cached = parseNationwideOverpassResponse(cachedBody);
+      if (cached.isEmpty) return bundled;
+      if (bundled.isEmpty) return cached;
+
+      final bundledUpdatedAt = _newestSourceUpdate(bundled);
+      final cachedUpdatedAt = _newestSourceUpdate(cached);
+      if (cachedUpdatedAt != null &&
+          (bundledUpdatedAt == null ||
+              cachedUpdatedAt.isAfter(bundledUpdatedAt))) {
+        return cached;
+      }
+    } catch (error, stackTrace) {
+      debugPrint('EV CHARGERS PERSISTED SNAPSHOT ERROR: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    return bundled;
+  }
+
+  Future<void> _savePersistedSnapshot(String responseBody) async {
+    try {
+      await _cachedSnapshotWriter(responseBody);
+    } catch (error, stackTrace) {
+      // A storage failure must never turn a successful live OSM response into
+      // a user-visible module failure.
+      debugPrint('EV CHARGERS SNAPSHOT SAVE ERROR: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  static DateTime? _newestSourceUpdate(List<EvCharger> chargers) {
+    DateTime? newest;
+    for (final charger in chargers) {
+      final candidate = charger.sourceUpdatedAt;
+      if (candidate != null && (newest == null || candidate.isAfter(newest))) {
+        newest = candidate;
+      }
+    }
+    return newest;
+  }
+
   static Future<String> _loadBundledSnapshotAsset() {
     return rootBundle.loadString(_bundledSnapshotAsset);
+  }
+
+  static Future<String?> _loadPersistedSnapshot() async {
+    final preferences = await SharedPreferences.getInstance();
+    final responseBody = preferences.getString(_persistedSnapshotKey);
+    final savedAtMilliseconds = preferences.getInt(
+      _persistedSnapshotSavedAtKey,
+    );
+    if (responseBody == null || savedAtMilliseconds == null) return null;
+
+    final savedAt = DateTime.fromMillisecondsSinceEpoch(
+      savedAtMilliseconds,
+      isUtc: true,
+    );
+    final age = DateTime.now().toUtc().difference(savedAt);
+    if (age.isNegative || age > _persistedCacheLifetime) {
+      await preferences.remove(_persistedSnapshotKey);
+      await preferences.remove(_persistedSnapshotSavedAtKey);
+      return null;
+    }
+
+    return responseBody;
+  }
+
+  static Future<void> _storePersistedSnapshot(String responseBody) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_persistedSnapshotKey, responseBody);
+    await preferences.setInt(
+      _persistedSnapshotSavedAtKey,
+      DateTime.now().toUtc().millisecondsSinceEpoch,
+    );
   }
 
   /// Zadržano za testove i moguće city-scoped potrebe drugih ekrana.

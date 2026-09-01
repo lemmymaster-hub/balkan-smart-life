@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Parking inventory is read-only for signed-in BSL clients. Operational
+    // updates must come from the Firebase Admin SDK or Console.
+    match /parkings/{parkingId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Verified corrections augment public OSM charger data. A mobile client
+    // must never be able to declare its own charger record as verified.
+    match /ev_charger_verifications/{chargerId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Operator sessions contain user-specific live state. Each user may read
+    // only the document whose ID is their Firebase UID; writes stay server-side.
+    match /ev_active_charging_sessions/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    // AI quotas are internal anti-abuse state maintained by the Admin SDK.
+    match /bsl_ai_rate_limits/{userId} {
+      allow read, write: if false;
+    }
+
+    // New collections are private until an explicit reviewed rule is added.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

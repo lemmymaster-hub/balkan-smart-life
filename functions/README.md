@@ -16,11 +16,11 @@ kontaktira NVIDIA API direktno i nikada ne sadrži NVIDIA ključ.
 - Promptovi i GPS koordinate se ne zapisuju u log.
 - `grounded` ostaje `false` dok ne bude ugrađen provjeren RAG/internet sloj.
 
-U postojeća Firestore pravila spoji sadržaj
-`firestore-ai-rules.snippet`. Mobilni klijent ne smije čitati ni mijenjati
-`bsl_ai_rate_limits`; Admin SDK u Cloud Functionu pravila zaobilazi. Nemoj
-zamijeniti postojeći rules fajl samim isječkom jer bi to moglo pokvariti
-parkinge, punjače i druge kolekcije.
+Repozitorij sada sadrži kompletan `firestore.rules` fajl za parkinge, EV
+verifikacije, korisničke live sesije i AI rate-limit stanje. Mobilni klijent ne
+smije čitati ni mijenjati `bsl_ai_rate_limits`; Admin SDK u Cloud Functionu
+pravila zaobilazi. Svaka nova kolekcija ostaje zatvorena dok ne dobije izričito
+pregledano pravilo.
 
 ## Lokalna priprema
 

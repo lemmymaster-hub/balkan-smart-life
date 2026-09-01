@@ -28,6 +28,21 @@ Project reference: `jkzjktrnqtkpdiiugfar`
   compatibility wrapper and is not callable by client roles.
 - The OSM sync Edge Function uses two bounded `api` RPCs granted only to
   `service_role`; anonymous and authenticated clients cannot execute them.
+- The OSM sync endpoint disables the platform JWT check because it is never a
+  user endpoint. Its handler requires a random 256-bit credential generated in
+  Supabase Vault and verifies it through a service-only RPC before any fetch or
+  write.
+- Four staggered `pg_cron` jobs request bounded BiH sectors every Monday and
+  Thursday through `pg_net`; a fifth dispatcher job validates completed source
+  responses and sends them to the locked Edge Function. This split avoids
+  unreliable Edge egress to public Overpass servers without granting database
+  write access to the source fetcher.
+- Source requests use an indexed combined `amenity=atm|bank` filter, validate
+  shape, row count, size, and OSM snapshot freshness, and retry at most twice
+  after the initial attempt. Only then can the Edge Function normalize and
+  reconcile rows.
+- `api.bsl_atm_sync_health()` exposes only a bounded freshness summary so the
+  smoke workflow can detect a failed or stale sector without exposing raw rows.
 
 The migration intentionally sets `pgrst.db_schemas=api` on the
 `authenticator` role. This is a manual Data API schema override; future
@@ -46,3 +61,6 @@ should be used only for incident recovery.
 The Supabase publishable key is intentionally present in the Flutter client
 and smoke workflow. It is not a secret. Never commit the service-role key,
 secret key, database password, or Edge Function secrets.
+
+The Vault credential named `bsl_atm_sync_secret` is created inside Postgres and
+is never returned to CI, Flutter, source control, or operator output.

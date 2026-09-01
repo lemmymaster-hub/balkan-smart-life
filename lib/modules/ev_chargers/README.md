@@ -6,8 +6,11 @@ provjereni sloj za ispravke i deaktivaciju zastarjelih zapisa.
 
 ## Firestore verifikacije
 
-Mobilni klijent odmah učitava zadnji provjereni BiH OSM snapshot iz APK-a, a
-zatim ga u pozadini osvježava jednim ograničenim državnim upitom. Koristi
+Mobilni klijent odmah učitava zadnji provjereni BiH OSM snapshot iz APK-a,
+zatim bira noviji uspješno osvježeni snapshot sa uređaja i u pozadini ga
+osvježava jednim ograničenim državnim upitom. Uspješan odgovor se čuva do 30
+dana, pa ponovno pokretanje aplikacije ne vraća korisnika na stariji APK
+snapshot. Koristi
 aktivne `lz4.overpass-api.de`, `overpass-api.de` i `overpass.private.coffee`
 endpoint-e, uz rok od 20 sekundi po pokušaju. Time ekran više ne čeka serijski
 na ugašeni Mail.ru endpoint, ne šalje četiri paralelna zahtjeva i ostaje

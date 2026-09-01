@@ -1,4 +1,78 @@
-# Production verification — 2026-08-21
+# Production verification — 2026-09-01
+
+Project: `bsl_backend` (`jkzjktrnqtkpdiiugfar`)
+Project status: `ACTIVE_HEALTHY`
+Postgres: `17.6.1.155` (`eu-central-1`)
+
+Migrations:
+
+- `20260901084929_secure_bsl_atm_sync_scheduler`
+- `20260901130623_route_bsl_atm_source_through_pg_net`
+
+## ATM sync recovery
+
+Direct Overpass requests from the Edge runtime timed out or returned HTTP 502,
+including minimal probe queries. The same global source was reachable through
+the separate `pg_net` egress path. The production scheduler now uses a
+two-stage route:
+
+1. Four staggered jobs enqueue read-only, bounded Overpass requests.
+2. A private dispatcher validates response size, shape, row count, and OSM
+   snapshot freshness.
+3. Only a validated payload is sent with the Vault credential to Edge Function
+   `sync-bsl-atm-osm` version 12 for normalization, upsert, reconciliation, and
+   matching.
+
+The private queue and dispatcher functions are executable only by their
+`postgres` owner. `anon`, `authenticated`, and `service_role` cannot invoke
+them. Source and ingest stages retry at most twice after the initial attempt.
+
+## Initial four-sector run
+
+| Sector | Candidates | Source attempts | Ingest attempts | Deactivated | Completed (UTC) |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 0 | 455 | 1 | 1 | 0 | 2026-09-01 13:08:04 |
+| 1 | 536 | 1 | 1 | 0 | 2026-09-01 13:09:36 |
+| 2 | 934 | 2 | 1 | 0 | 2026-09-01 13:11:39 |
+| 3 | 897 | 2 | 1 | 0 | 2026-09-01 13:14:10 |
+
+The automatic retry recovered transient source failures for sectors 2 and 3.
+All four final states have `last_error = null`.
+
+## Production assertions
+
+| Check | Result |
+| --- | --- |
+| `api.bsl_atm_sync_health()` | `healthy=true` |
+| Oldest sector sync | `2026-09-01 13:08:04 UTC` |
+| Total OSM candidates | 2,822 |
+| Confirmed ATM candidates | 2,333 |
+| Bank-branch candidates | 1,026 |
+| Matched official locations | 41 |
+| Invalid coordinates | 0 |
+| Pending official locations | 317 |
+| Active ATM cron jobs | 5 (4 source + 1 dispatcher) |
+| Full SQL security suite | passed |
+| Edge request without sync secret | HTTP 401, `Unauthorized` |
+| Edge Function | version 12, active, handler-enforced Vault auth |
+
+## Advisor notes
+
+No advisor finding was introduced by either ATM migration. The remaining
+security findings are extension-owned PostGIS objects in `public`
+(`spatial_ref_sys`, `postgis`, and three `st_estimatedextent` overloads).
+Attempting the owner-only RLS change as the project `postgres` role correctly
+failed because these objects are owned by `supabase_admin`. PostgREST remains
+configured to expose only `api`, so `public` is outside the Data API.
+
+The RLS-without-policy INFO notices are intentional deny-by-default controls on
+private/raw tables. The unused-index INFO notices are not actionable immediately
+after deployment; the indexes support known joins or foreign keys and need
+representative statistics before removal is considered.
+
+---
+
+# Historical verification — 2026-08-21
 
 Project: `bsl_backend` (`jkzjktrnqtkpdiiugfar`)  
 Migrations:

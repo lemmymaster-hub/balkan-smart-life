@@ -49,6 +49,7 @@ void main() {
     test('nacionalno osvježavanje šalje jedan ograničen OSM upit', () async {
       var requestCount = 0;
       String? requestBody;
+      String? cachedSnapshot;
       final service = EvChargerService(
         httpClient: MockClient((request) async {
           requestCount++;
@@ -70,6 +71,9 @@ void main() {
         overpassEndpoints: const [
           'https://overpass.private.coffee/api/interpreter',
         ],
+        cachedSnapshotWriter: (body) async {
+          cachedSnapshot = body;
+        },
       );
 
       addTearDown(service.dispose);
@@ -77,6 +81,7 @@ void main() {
 
       expect(requestCount, 1);
       expect(requestBody, contains('3602528142'));
+      expect(cachedSnapshot, contains('"id": 502'));
     });
 
     test('ugrađeni OSM snapshot prikazuje punjače prije mreže', () async {
@@ -102,6 +107,7 @@ void main() {
   ]
 }
 ''',
+        cachedSnapshotLoader: () async => null,
       );
 
       addTearDown(service.dispose);
@@ -113,6 +119,53 @@ void main() {
       expect(
         firstResult.single.sourceUpdatedAt,
         DateTime.parse('2026-08-21T18:00:10Z'),
+      );
+    });
+
+    test('noviji trajni snapshot ima prednost nad starijim APK snapshotom', () async {
+      final service = EvChargerService(
+        httpClient: MockClient((request) async {
+          throw StateError('Mreža se ne smije čekati prije prvog rezultata.');
+        }),
+        bundledSnapshotLoader: () async => '''
+{
+  "osm3s": {"timestamp_osm_base": "2026-08-21T18:00:10Z"},
+  "elements": [
+    {
+      "type": "node",
+      "id": 601,
+      "lat": 44.9799,
+      "lon": 16.7140,
+      "tags": {"amenity": "charging_station", "name": "Stari snapshot"}
+    }
+  ]
+}
+''',
+        cachedSnapshotLoader: () async => '''
+{
+  "osm3s": {"timestamp_osm_base": "2026-08-30T12:00:00Z"},
+  "elements": [
+    {
+      "type": "node",
+      "id": 602,
+      "lat": 44.9799,
+      "lon": 16.7140,
+      "tags": {"amenity": "charging_station", "name": "Novi snapshot"}
+    }
+  ]
+}
+''',
+      );
+
+      addTearDown(service.dispose);
+      final firstResult = await service
+          .watchForCity(BslCities.byName('Prijedor'))
+          .first;
+
+      expect(firstResult.single.name, 'Novi snapshot');
+      expect(
+        firstResult.single.sourceUpdatedAt,
+        DateTime.parse('2026-08-30T12:00:00Z'),
       );
     });
 

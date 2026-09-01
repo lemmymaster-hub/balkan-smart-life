@@ -1,6 +1,9 @@
 name: BSL Flutter CI
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     paths:
       - "lib/**"
