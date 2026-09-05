@@ -18,7 +18,7 @@ class AtmService {
   static const double defaultRadiusKilometers = 10;
 
   // Publishable Supabase keys are intended for client applications. Database
-  // access is restricted to the read-only bsl_nearby_atms_map RPC.
+  // access is restricted to the read-only bsl_nearby_atms_map RPC in the api schema.
   static const String _supabaseUrl = 'https://jkzjktrnqtkpdiiugfar.supabase.co';
   static const String _supabasePublishableKey =
       'sb_publishable_3s2pD65jngWSus-6wV-jpw_vXynI3oJ';
@@ -111,6 +111,7 @@ class AtmService {
           headers: const {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
+            'Content-Profile': 'api',
             'apikey': _supabasePublishableKey,
           },
           body: jsonEncode({

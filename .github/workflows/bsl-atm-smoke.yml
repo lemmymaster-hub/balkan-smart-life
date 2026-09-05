@@ -1,0 +1,209 @@
+name: BSL ATM backend smoke test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/bsl-atm-smoke.yml"
+      - "supabase/**"
+  pull_request:
+    paths:
+      - ".github/workflows/bsl-atm-smoke.yml"
+      - "supabase/**"
+  schedule:
+    - cron: "17 1,9,17 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  atm-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      BSL_SUPABASE_URL: https://jkzjktrnqtkpdiiugfar.supabase.co
+      BSL_SUPABASE_PUBLISHABLE_KEY: sb_publishable_3s2pD65jngWSus-6wV-jpw_vXynI3oJ
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check Edge Function source
+        shell: bash
+        run: |
+          deno fmt --check supabase/functions
+          deno check supabase/functions/sync-bsl-atm-osm/index.ts
+
+      - name: Check Sarajevo ATM response
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          http_code="$(
+            curl \
+              --silent \
+              --show-error \
+              --output "$response_file" \
+              --write-out "%{http_code}" \
+              --request POST \
+              "${BSL_SUPABASE_URL}/rest/v1/rpc/bsl_nearby_atms_map" \
+              --header "Accept: application/json" \
+              --header "Content-Type: application/json" \
+              --header "apikey: ${BSL_SUPABASE_PUBLISHABLE_KEY}" \
+              --data '{"p_lat":43.8563,"p_lon":18.4131,"p_radius_m":10000}'
+          )"
+
+          if [[ "$http_code" != "200" ]]; then
+            jq . "$response_file" || true
+            echo "Unexpected HTTP status: $http_code"
+            exit 1
+          fi
+
+          jq -e '
+            type == "array"
+            and length > 0
+            and length <= 500
+            and all(.[];
+              has("location_id")
+              and has("latitude")
+              and has("longitude")
+              and has("distance_m")
+            )
+          ' "$response_file" >/dev/null
+
+      - name: Reject an oversized radius
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          http_code="$(
+            curl \
+              --silent \
+              --show-error \
+              --output "$response_file" \
+              --write-out "%{http_code}" \
+              --request POST \
+              "${BSL_SUPABASE_URL}/rest/v1/rpc/bsl_nearby_atms_map" \
+              --header "Accept: application/json" \
+              --header "Content-Type: application/json" \
+              --header "Content-Profile: api" \
+              --header "apikey: ${BSL_SUPABASE_PUBLISHABLE_KEY}" \
+              --data '{"p_lat":43.8563,"p_lon":18.4131,"p_radius_m":50001}'
+          )"
+
+          if [[ "$http_code" -lt 400 || "$http_code" -ge 500 ]]; then
+            jq . "$response_file" || true
+            echo "Invalid radius should produce a 4xx response, got $http_code"
+            exit 1
+          fi
+
+      - name: Block anonymous OSM sync writes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          http_code="$(
+            curl \
+              --silent \
+              --show-error \
+              --output "$response_file" \
+              --write-out "%{http_code}" \
+              --request POST \
+              "${BSL_SUPABASE_URL}/rest/v1/rpc/bsl_upsert_osm_atm_candidates" \
+              --header "Accept: application/json" \
+              --header "Content-Type: application/json" \
+              --header "Content-Profile: api" \
+              --header "apikey: ${BSL_SUPABASE_PUBLISHABLE_KEY}" \
+              --data '{"p_rows":[]}'
+          )"
+
+          if [[ "$http_code" != "401" && "$http_code" != "403" ]]; then
+            jq . "$response_file" || true
+            echo "Anonymous sync write should be denied, got $http_code"
+            exit 1
+          fi
+
+          jq -e '.code == "42501"' "$response_file" >/dev/null
+
+      - name: Check scheduled ATM data freshness
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          http_code="$(
+            curl \
+              --silent \
+              --show-error \
+              --max-time 20 \
+              --output "$response_file" \
+              --write-out "%{http_code}" \
+              --request POST \
+              "${BSL_SUPABASE_URL}/rest/v1/rpc/bsl_atm_sync_health" \
+              --header "Accept: application/json" \
+              --header "Content-Type: application/json" \
+              --header "Content-Profile: api" \
+              --header "apikey: ${BSL_SUPABASE_PUBLISHABLE_KEY}" \
+              --data '{}'
+          )"
+
+          if [[ "$http_code" != "200" ]]; then
+            jq . "$response_file" || true
+            echo "ATM sync health endpoint returned HTTP $http_code"
+            exit 1
+          fi
+
+          jq -e '
+            type == "array"
+            and length == 1
+            and .[0].healthy == true
+            and .[0].confirmed_candidates > 0
+          ' "$response_file" >/dev/null
+
+      - name: Reject unauthenticated ATM sector sync
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          http_code="$(
+            curl \
+              --silent \
+              --show-error \
+              --max-time 20 \
+              --output "$response_file" \
+              --write-out "%{http_code}" \
+              --request POST \
+              "${BSL_SUPABASE_URL}/functions/v1/sync-bsl-atm-osm" \
+              --header "Content-Type: application/json" \
+              --data '{"sector":0}'
+          )"
+
+          if [[ "$http_code" != "401" ]]; then
+            jq . "$response_file" || true
+            echo "Unauthenticated sync should be rejected, got HTTP $http_code"
+            exit 1
+          fi
+
+          jq -e '.error == "Unauthorized"' "$response_file" >/dev/null

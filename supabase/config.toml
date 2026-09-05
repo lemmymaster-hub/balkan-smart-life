@@ -1,0 +1,9 @@
+project_id = "bsl_backend"
+
+[functions.import-bsl-atm-master]
+verify_jwt = true
+
+[functions.sync-bsl-atm-osm]
+# This function is service-to-service only. It authenticates a random Vault
+# credential in its own handler before any privileged write is attempted.
+verify_jwt = false
