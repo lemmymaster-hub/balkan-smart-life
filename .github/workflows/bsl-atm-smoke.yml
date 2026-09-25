@@ -29,7 +29,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Deno
         uses: denoland/setup-deno@v2
@@ -158,7 +158,7 @@ jobs:
               --output "$response_file" \
               --write-out "%{http_code}" \
               --request POST \
-              "${BSL_SUPABASE_URL}/rest/v1/rpc/bsl_atm_sync_health" \
+              "${BSL_SUPABASE_URL}/rest/v1/rpc/bsl_atm_public_health" \
               --header "Accept: application/json" \
               --header "Content-Type: application/json" \
               --header "Content-Profile: api" \
@@ -168,7 +168,7 @@ jobs:
 
           if [[ "$http_code" != "200" ]]; then
             jq . "$response_file" || true
-            echo "ATM sync health endpoint returned HTTP $http_code"
+            echo "Minimal ATM health endpoint returned HTTP $http_code"
             exit 1
           fi
 
@@ -176,8 +176,40 @@ jobs:
             type == "array"
             and length == 1
             and .[0].healthy == true
-            and .[0].confirmed_candidates > 0
+            and (. [0] | keys | sort) == ["healthy"]
           ' "$response_file" >/dev/null
+
+      - name: Keep detailed ATM health private
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          http_code="$(
+            curl \
+              --silent \
+              --show-error \
+              --max-time 20 \
+              --output "$response_file" \
+              --write-out "%{http_code}" \
+              --request POST \
+              "${BSL_SUPABASE_URL}/rest/v1/rpc/bsl_atm_sync_health" \
+              --header "Accept: application/json" \
+              --header "Content-Type: application/json" \
+              --header "Content-Profile: api" \
+              --header "apikey: ${BSL_SUPABASE_PUBLISHABLE_KEY}" \
+              --data '{}'
+          )"
+
+          if [[ "$http_code" != "401" && "$http_code" != "403" ]]; then
+            jq . "$response_file" || true
+            echo "Detailed ATM health should be private, got HTTP $http_code"
+            exit 1
+          fi
+
+          jq -e '.code == "42501"' "$response_file" >/dev/null
 
       - name: Reject unauthenticated ATM sector sync
         shell: bash
