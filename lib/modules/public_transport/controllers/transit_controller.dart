@@ -29,6 +29,7 @@ class TransitController extends ChangeNotifier {
   int _generation = 0;
   int _stopGeneration = 0;
   Timer? _timer;
+  Timer? _expiryTimer;
 
   bool get fresh =>
       receivedAt != null &&
@@ -36,8 +37,9 @@ class TransitController extends ChangeNotifier {
       now().difference(receivedAt!) < const Duration(seconds: 60);
   List<TransitArrival> get arrivals {
     final currentRoute = route;
-    if (!fresh || currentRoute == null || currentRoute.stops.isEmpty)
+    if (!fresh || currentRoute == null || currentRoute.stops.isEmpty) {
       return const [];
+    }
     return selectTransitArrivals(
       _arrivals,
       lineId: line.id,
@@ -105,6 +107,7 @@ class TransitController extends ChangeNotifier {
   }
 
   void _clearRoute() {
+    _expiryTimer?.cancel();
     route = null;
     stop = null;
     _arrivals = const [];
@@ -162,6 +165,7 @@ class TransitController extends ChangeNotifier {
   Future<void> selectStop(TransitStop value) async {
     if (route?.stops.any((s) => s.id == value.id) != true) return;
     _stopGeneration++;
+    _expiryTimer?.cancel();
     stop = value;
     _arrivals = const [];
     receivedAt = null;
@@ -177,8 +181,9 @@ class TransitController extends ChangeNotifier {
         refreshing ||
         loading ||
         stop == null ||
-        direction == null)
+        direction == null) {
       return;
+    }
     final token = _generation;
     final stopToken = _stopGeneration;
     final selectedStop = stop!;
@@ -191,6 +196,10 @@ class TransitController extends ChangeNotifier {
       _arrivals = loaded;
       receivedAt = now();
       arrivalError = null;
+      _expiryTimer?.cancel();
+      _expiryTimer = Timer(const Duration(seconds: 60), () {
+        if (active) _emit();
+      });
     } catch (_) {
       if (!current()) return;
       _arrivals = const [];
@@ -208,6 +217,7 @@ class TransitController extends ChangeNotifier {
     _disposed = true;
     _generation++;
     _timer?.cancel();
+    _expiryTimer?.cancel();
     gateway.dispose();
     super.dispose();
   }

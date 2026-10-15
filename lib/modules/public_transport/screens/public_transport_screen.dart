@@ -42,6 +42,8 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
   bool _pending = false;
   bool _iconsLoading = false;
   String? _mapError;
+  double _sheetExtent = .34;
+  Timer? _paddingDebounce;
 
   LatLng _latLng(TransitPoint point) =>
       LatLng(latitude: point.latitude, longitude: point.longitude);
@@ -76,8 +78,9 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
       _style = style;
       await _map?.setMapStyle(style);
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() => _mapError = 'Stil mape trenutno nije dostupan.');
+      }
     }
   }
 
@@ -98,8 +101,9 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
       }
       _scheduleMapSync();
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() => _mapError = 'Oznake mape trenutno nisu dostupne.');
+      }
     }
   }
 
@@ -127,11 +131,29 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
         context.read<BslLocationContext>().hasLocation,
       );
       // Keep Google attribution and map controls outside the BSL panels.
-      await map.setPadding(const EdgeInsets.fromLTRB(12, 265, 12, 290));
+      await _updateMapPadding();
       _drawnRoute = null;
       _scheduleMapSync();
     } catch (_) {
       if (mounted) setState(() => _mapError = 'Mapa trenutno nije dostupna.');
+    }
+  }
+
+  Future<void> _updateMapPadding() async {
+    if (!mounted || _map == null) return;
+    final size = MediaQuery.sizeOf(context);
+    final top = (MediaQuery.paddingOf(context).top + 250).clamp(
+      0.0,
+      size.height - 80,
+    );
+    final bottom = (size.height * _sheetExtent + 8).clamp(
+      0.0,
+      size.height - top - 40,
+    );
+    try {
+      await _map?.setPadding(EdgeInsets.fromLTRB(12, top, 12, bottom));
+    } catch (_) {
+      /* A resizing map must not interrupt the station list. */
     }
   }
 
@@ -201,11 +223,12 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
         }
       }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _mapError =
               'Prikaz mape nije osvježen. Podaci su dostupni u spisku.',
         );
+      }
     } finally {
       _syncing = false;
     }
@@ -288,6 +311,7 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
     _transit.removeListener(_changed);
     if (widget.controller == null) _transit.dispose();
     _search.dispose();
+    _paddingDebounce?.cancel();
     for (final icon in _icons.values) {
       unawaited(unregisterImage(icon));
     }
@@ -355,6 +379,7 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
                                   child: ChoiceChip(
                                     label: Text(
                                       '${line.isTram ? 'Tramvaj' : 'Trolejbus'} ${line.code}',
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                     selected: line.id == _transit.line.id,
                                     selectedColor: BslColors.glassBlue,
@@ -420,143 +445,156 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
               onTap: () => unawaited(_nearestStop()),
             ),
           ),
-          DraggableScrollableSheet(
-            initialChildSize: .34,
-            minChildSize: .20,
-            maxChildSize: .72,
-            builder: (context, scrollController) => Container(
-              decoration: BslDecorations.bottomDock(),
-              child: SafeArea(
-                top: false,
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        margin: const EdgeInsets.only(bottom: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.white54,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        Icon(
-                          _transit.line.isTram
-                              ? Icons.tram
-                              : Icons.directions_bus,
-                          color: _accent,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _transit.stop?.name ?? _transit.line.name,
-                            style: BslTextStyles.body,
+          NotificationListener<DraggableScrollableNotification>(
+            onNotification: (notification) {
+              _sheetExtent = notification.extent;
+              _paddingDebounce?.cancel();
+              _paddingDebounce = Timer(const Duration(milliseconds: 80), () {
+                unawaited(_updateMapPadding());
+              });
+              return false;
+            },
+            child: DraggableScrollableSheet(
+              initialChildSize: .34,
+              minChildSize: .20,
+              maxChildSize: .72,
+              builder: (context, scrollController) => Container(
+                decoration: BslDecorations.bottomDock(),
+                child: SafeArea(
+                  top: false,
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white54,
+                            borderRadius: BorderRadius.circular(4),
                           ),
                         ),
-                        IconButton(
-                          tooltip: 'Osvježi',
-                          onPressed: _transit.refreshing
-                              ? null
-                              : () {
-                                  if (_transit.routeError != null) {
-                                    unawaited(
-                                      _transit.selectLine(_transit.line),
-                                    );
-                                  } else {
-                                    unawaited(_transit.refreshArrivals());
-                                  }
-                                },
-                          icon: const Icon(
-                            Icons.refresh,
-                            color: BslColors.cyan,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (_transit.loading)
-                      const LinearProgressIndicator(color: BslColors.cyan),
-                    if (_transit.routeError != null)
-                      Text(_transit.routeError!, style: BslTextStyles.body),
-                    if (_mapError != null)
-                      Text(_mapError!, style: BslTextStyles.subtitle),
-                    Text(_transit.liveStatus, style: BslTextStyles.subtitle),
-                    if (_transit.receivedAt != null)
-                      Text(
-                        'Provjereno ${_clock(_transit.receivedAt!)} • izvor: javniprevozks.ba',
-                        style: BslTextStyles.subtitle.copyWith(fontSize: 10),
                       ),
-                    if (_transit.arrivals.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      for (final arrival in _transit.arrivals.take(5))
-                        ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(
+                      Row(
+                        children: [
+                          Icon(
                             _transit.line.isTram
                                 ? Icons.tram
                                 : Icons.directions_bus,
                             color: _accent,
                           ),
-                          title: Text(
-                            '${arrival.operatorName} • ${_transit.line.code}',
-                            style: BslTextStyles.body,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _transit.stop?.name ?? _transit.line.name,
+                              style: BslTextStyles.body,
+                            ),
                           ),
-                          subtitle: Text(
-                            'Očekivano ${_clock(arrival.expectedAt)}',
-                            style: BslTextStyles.subtitle,
-                          ),
-                          trailing: Text(
-                            '${arrival.minutesFrom(_transit.now())} min',
-                            style: BslTextStyles.body.copyWith(
+                          IconButton(
+                            tooltip: 'Osvježi',
+                            onPressed: _transit.refreshing
+                                ? null
+                                : () {
+                                    if (_transit.routeError != null) {
+                                      unawaited(
+                                        _transit.selectLine(_transit.line),
+                                      );
+                                    } else {
+                                      unawaited(_transit.refreshArrivals());
+                                    }
+                                  },
+                            icon: const Icon(
+                              Icons.refresh,
                               color: BslColors.cyan,
                             ),
                           ),
-                        ),
-                      const Text(
-                        'Pozicije su iz odgovora za dolaske. Izvor ne navodi vrijeme GPS mjerenja.',
-                        style: BslTextStyles.subtitle,
+                        ],
                       ),
+                      if (_transit.loading)
+                        const LinearProgressIndicator(color: BslColors.cyan),
+                      if (_transit.routeError != null)
+                        Text(_transit.routeError!, style: BslTextStyles.body),
+                      if (_mapError != null)
+                        Text(_mapError!, style: BslTextStyles.subtitle),
+                      Text(_transit.liveStatus, style: BslTextStyles.subtitle),
+                      if (_transit.receivedAt != null)
+                        Text(
+                          'Provjereno ${_clock(_transit.receivedAt!)} • izvor: javniprevozks.ba',
+                          style: BslTextStyles.subtitle.copyWith(fontSize: 10),
+                        ),
+                      if (_transit.arrivals.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        for (final arrival in _transit.arrivals.take(5))
+                          ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              _transit.line.isTram
+                                  ? Icons.tram
+                                  : Icons.directions_bus,
+                              color: _accent,
+                            ),
+                            title: Text(
+                              '${arrival.operatorName} • ${_transit.line.code}',
+                              style: BslTextStyles.body,
+                            ),
+                            subtitle: Text(
+                              'Očekivano ${_clock(arrival.expectedAt)}',
+                              style: BslTextStyles.subtitle,
+                            ),
+                            trailing: Text(
+                              '${arrival.minutesFrom(_transit.now())} min',
+                              style: BslTextStyles.body.copyWith(
+                                color: BslColors.cyan,
+                              ),
+                            ),
+                          ),
+                        const Text(
+                          'Pozicije su iz odgovora za dolaske. Izvor ne navodi vrijeme GPS mjerenja.',
+                          style: BslTextStyles.subtitle,
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _transit.direction == null
+                            ? null
+                            : _showTimetable,
+                        icon: const Icon(Icons.schedule),
+                        label: const Text('Red vožnje • polasci s terminala'),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Stanice u smjeru vožnje',
+                        style: BslTextStyles.body,
+                      ),
+                      if (stops.isEmpty &&
+                          !_transit.loading &&
+                          _transit.routeError == null)
+                        const Text(
+                          'Nema stanica za ovu pretragu.',
+                          style: BslTextStyles.subtitle,
+                        ),
+                      for (final stop in stops)
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          selected: stop.id == _transit.stop?.id,
+                          selectedTileColor: BslColors.glassBlue,
+                          leading: Icon(
+                            Icons.trip_origin,
+                            color: _accent,
+                            size: 18,
+                          ),
+                          title: Text(stop.name, style: BslTextStyles.body),
+                          onTap: () {
+                            FocusScope.of(context).unfocus();
+                            unawaited(_selectStop(stop));
+                          },
+                        ),
                     ],
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: _transit.direction == null
-                          ? null
-                          : _showTimetable,
-                      icon: const Icon(Icons.schedule),
-                      label: const Text('Red vožnje • polasci s terminala'),
-                    ),
-                    const SizedBox(height: 8),
-                    Text('Stanice u smjeru vožnje', style: BslTextStyles.body),
-                    if (stops.isEmpty &&
-                        !_transit.loading &&
-                        _transit.routeError == null)
-                      const Text(
-                        'Nema stanica za ovu pretragu.',
-                        style: BslTextStyles.subtitle,
-                      ),
-                    for (final stop in stops)
-                      ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        selected: stop.id == _transit.stop?.id,
-                        selectedTileColor: BslColors.glassBlue,
-                        leading: Icon(
-                          Icons.trip_origin,
-                          color: _accent,
-                          size: 18,
-                        ),
-                        title: Text(stop.name, style: BslTextStyles.body),
-                        onTap: () {
-                          FocusScope.of(context).unfocus();
-                          unawaited(_selectStop(stop));
-                        },
-                      ),
-                  ],
+                  ),
                 ),
               ),
             ),

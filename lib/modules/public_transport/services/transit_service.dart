@@ -50,11 +50,13 @@ class MinistryTransitService implements TransitGateway {
                     body: jsonEncode(body),
                   ))
             .timeout(const Duration(seconds: 15));
-    if (response.statusCode != 200)
+    if (response.statusCode != 200) {
       throw TransitApiException(response.statusCode);
+    }
     final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-    if (decoded is! List)
+    if (decoded is! List) {
       throw const FormatException('Expected a transit list');
+    }
     return decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
@@ -81,8 +83,9 @@ class MinistryTransitService implements TransitGateway {
     ]);
     final stops = result[0].map(TransitStop.fromJson).toList();
     final points = result[1].map(TransitPoint.fromJson).toList();
-    if (stops.isEmpty || points.length < 2)
+    if (stops.isEmpty || points.length < 2) {
       throw const FormatException('Incomplete transit route');
+    }
     return TransitRoute.ordered(stops, points);
   }
 

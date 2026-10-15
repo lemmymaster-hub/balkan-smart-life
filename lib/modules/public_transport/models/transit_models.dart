@@ -73,8 +73,9 @@ class TransitRoute {
     List<TransitStop> stops,
     List<TransitPoint> points,
   ) {
-    if (points.length < 2)
+    if (points.length < 2) {
       return TransitRoute(List.unmodifiable(stops), points);
+    }
     double progress(TransitStop stop) {
       var best = double.infinity;
       var result = 0.0;
@@ -180,11 +181,13 @@ List<TransitArrival> selectTransitArrivals(
   for (final row in rows) {
     if (row.lineId != lineId ||
         row.destinationStation != destinationId ||
-        row.expectedAt.isBefore(now.toUtc()))
+        row.expectedAt.isBefore(now.toUtc())) {
       continue;
+    }
     final old = trips[row.tripId];
-    if (old == null || row.expectedAt.isBefore(old.expectedAt))
+    if (old == null || row.expectedAt.isBefore(old.expectedAt)) {
       trips[row.tripId] = row;
+    }
   }
   return trips.values.toList()
     ..sort((a, b) => a.expectedAt.compareTo(b.expectedAt));
