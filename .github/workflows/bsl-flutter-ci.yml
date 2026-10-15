@@ -48,7 +48,7 @@ jobs:
         run: flutter test
 
       - name: Upload transit model previews
-        if: hashFiles('build/transit-preview/*.png') != ''
+        if: always() && hashFiles('build/transit-preview/*.png') != ''
         uses: actions/upload-artifact@v4
         with:
           name: transit-model-previews

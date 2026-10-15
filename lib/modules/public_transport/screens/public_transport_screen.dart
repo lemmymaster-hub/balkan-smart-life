@@ -350,6 +350,7 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
     return Scaffold(
       backgroundColor: BslColors.bgDark,
       body: Stack(
+        fit: StackFit.expand,
         children: [
           widget.mapBuilder?.call(context) ??
               GoogleMapsNavigationView(
