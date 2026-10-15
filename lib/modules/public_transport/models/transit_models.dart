@@ -158,9 +158,14 @@ class TransitArrival {
       lineId: (json['line_id'] as num).toInt(),
       destinationStation: (json['destination_station'] as num).toInt(),
       operatorName: json['operator_name'] as String? ?? '',
-      expectedAt:
-          parsed ??
-          receivedAt.toUtc().add(Duration(seconds: (minutes! * 60).round())),
+      // The official UI prioritizes arrival_minutes for near-term station ETAs.
+      // expected_arrival can describe a different scheduled terminal time.
+      expectedAt: minutes != null && minutes >= 0 && minutes <= 59
+          ? receivedAt.toUtc().add(Duration(seconds: (minutes * 60).round()))
+          : parsed ??
+                receivedAt.toUtc().add(
+                  Duration(seconds: (minutes! * 60).round()),
+                ),
       point: position,
     );
   }
@@ -181,7 +186,9 @@ List<TransitArrival> selectTransitArrivals(
   for (final row in rows) {
     if (row.lineId != lineId ||
         row.destinationStation != destinationId ||
-        row.expectedAt.isBefore(now.toUtc())) {
+        row.expectedAt.isBefore(
+          now.toUtc().subtract(const Duration(seconds: 30)),
+        )) {
       continue;
     }
     final old = trips[row.tripId];

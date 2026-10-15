@@ -2,6 +2,42 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:bsl_app/modules/public_transport/models/transit_models.dart';
 
 void main() {
+  test(
+    'near-term ETA uses station arrival_minutes even if expected time disagrees',
+    () {
+      final now = DateTime.utc(2026, 10, 15, 22);
+      final row = TransitArrival.fromJson({
+        'travel_order_id': 1,
+        'line_id': 130,
+        'destination_station': 149,
+        'arrival_minutes': 2,
+        'expected_arrival': '2026-10-15T22:20:00Z',
+      }, now);
+      expect(row.minutesFrom(now), 2);
+    },
+  );
+  test(
+    'zero-minute arrivals remain visible as arriving rather than disappearing',
+    () {
+      final now = DateTime.utc(2026, 10, 15, 22);
+      final row = TransitArrival.fromJson({
+        'travel_order_id': 1,
+        'line_id': 130,
+        'destination_station': 149,
+        'arrival_minutes': 0,
+      }, now);
+      expect(
+        selectTransitArrivals(
+          [row],
+          lineId: 130,
+          destinationId: 149,
+          now: now.add(const Duration(seconds: 1)),
+        ),
+        hasLength(1),
+      );
+    },
+  );
+
   test('API stations are ordered by geometry, not alphabetical name', () {
     final route = TransitRoute.ordered(
       [
