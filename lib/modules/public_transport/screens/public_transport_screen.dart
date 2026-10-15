@@ -106,8 +106,9 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
         _syncVehicles();
       }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() => _mapError = 'Prikaz vozila trenutno nije dostupan');
+      }
     }
   }
 
@@ -154,6 +155,7 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
       await map.setMyLocationEnabled(
         context.read<BslLocationContext>().hasLocation,
       );
+      if (!mounted) return;
       await map.setPadding(
         EdgeInsets.fromLTRB(
           12,
@@ -485,7 +487,7 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
                             ),
                         ],
                         onChanged: (id) {
-                          if (id != null)
+                          if (id != null) {
                             unawaited(
                               _transit.selectDirection(
                                 _transit.directions.firstWhere(
@@ -493,6 +495,7 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
                                 ),
                               ),
                             );
+                          }
                         },
                       ),
                     ),

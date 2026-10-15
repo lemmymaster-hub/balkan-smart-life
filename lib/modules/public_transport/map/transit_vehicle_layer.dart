@@ -30,7 +30,7 @@ class TransitVehicleLayer {
 
   void setImages(Map<int, ImageDescriptor> images) {
     _images = images;
-    _schedule();
+    _needsFrame = true;
   }
 
   void update({

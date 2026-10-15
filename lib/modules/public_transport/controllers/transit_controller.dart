@@ -313,8 +313,9 @@ class TransitController extends ChangeNotifier {
       fleetReceivedAt = receivedAt;
       arrivalError = null;
       vehicleRevision++;
-      if (selectedTripId != null && selectedVehicle == null)
+      if (selectedTripId != null && selectedVehicle == null) {
         clearVehicle(emit: false);
+      }
       _emit();
       if (selectedTripId != null) await _refreshNextStop();
     } catch (_) {
