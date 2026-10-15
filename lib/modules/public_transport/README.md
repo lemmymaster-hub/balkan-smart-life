@@ -38,17 +38,17 @@ not be used as the `station_id` in an arrival request. Terminal station IDs are
 
 ## Live-data semantics
 
-- Arrival requests run for the selected station only, every 30 seconds while
+- Arrival requests run for the selected station only, every 5 seconds while
   foregrounded. Changing the route or station invalidates old asynchronous results.
 - Arrival responses were observed to contain duplicate travel orders and both
   destination stations despite a direction filter. BSL filters by line and the
   direction's destination terminal, deduplicates by travel order and removes
-  expired predictions.
+  expired predictions (with a short grace for zero-minute arrivals).
 - The map uses the coordinates returned **with the arrival predictions**. The
   API does not supply a GPS measurement timestamp in this response. BSL labels
   that limitation and does not claim to show every vehicle in the fleet.
-- Arrival data and vehicle markers expire after 60 seconds. Network errors clear
-  vehicle markers, show an error and preserve the loaded route/stop list.
+- Arrival data and vehicle markers are treated as stale after 20 seconds. Network errors freeze/fade
+  last known vehicle markers, suppress ETAs and preserve the loaded route/stop list.
 - At the checked time tram 3 returned predictions and coordinates. Trolleybus
   106 returned an empty arrival list; this is displayed explicitly rather than
   replaced with simulated vehicles or timetable-based ETAs.
@@ -56,6 +56,39 @@ not be used as the `station_id` in an arrival request. Terminal station IDs are
   They respect validity, weekday, passenger service and a user-selectable holiday
   schedule. Times use Sarajevo civil time including EU DST boundaries, independent
   of the phone timezone. Automatic holiday detection is not provided.
+
+## Vehicle interaction and rendering
+
+The first view is a compact map, line/direction controls, and one arrival card.
+Station search is in a picker; the terminal timetable is in the overflow menu.
+No raw API URLs, GPS implementation details or update timestamps clutter the map.
+
+Station ETA prioritizes `arrival_minutes` up to 59 minutes, matching the official
+website. The `expected_arrival` field can disagree; it is only a fallback for
+longer-range times. The source has minute precision, so the UI shows `≈ N min`
+or `Stiže`, not an unsupported exact second countdown.
+
+The destination-terminal arrival query supplies available direction vehicles
+independently of the selected boarding station. A vehicle tap projects its
+latest observed position onto the direction geometry, selects the next stop
+(at most 100 m off the route), and requests that station's prediction for the
+same travel-order ID. If the source has no matching prediction, ETA is unknown;
+no average-speed or scheduled-time estimate is substituted.
+
+Yellow articulated tram and trolleybus geometric meshes are rendered in
+perspective with roofs, windows, doors, wheels, articulation and respective
+pantograph/trolley poles. Google Navigation's marker API accepts bitmaps, not
+world-space GLB models: 36 depth-sorted mesh views per vehicle type form a
+pre-rendered 3D rotation atlas. The map uses a fixed north-up viewing angle so
+the mesh's heading stays aligned. This is volumetric 3D rendering to native
+marker images, not a GLB object inserted into Google's scene.
+
+Stable native markers are batch-updated up to 20 FPS. Movement interpolates
+along route geometry between confirmed observations, with up to one observation
+interval of visual delay; it never predicts motion past the newest sample.
+Repeated coordinates stop, long gaps/large jumps reset, and backgrounding pauses
+animation/polling. No higher GPS accuracy or sampling frequency than the source
+can provide is implied.
 
 ## BSL integration
 

@@ -43,11 +43,24 @@ void main() {
       await tester.tap(find.text('Tramvaj 3'));
       await tester.pumpAndSettle();
       expect(c.line.id, 130);
+      expect(find.textContaining('javniprevozks.ba'), findsNothing);
+      expect(find.textContaining('Provjereno'), findsNothing);
+      await tester.tap(find.text('Promijeni stanicu'));
+      await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'nepostojeća');
       await tester.pumpAndSettle();
-      await tester.drag(find.byType(ListView).first, const Offset(0, -350));
-      await tester.pumpAndSettle();
+
       expect(find.text('Nema stanica za ovu pretragu.'), findsOneWidget);
+      Navigator.of(tester.element(find.byType(TextField))).pop();
+      await tester.pumpAndSettle();
+      await c.selectVehicle(1);
+      await tester.pumpAndSettle();
+      expect(find.text('Sljedeća stanica'), findsOneWidget);
+      expect(find.text('Završna stanica'), findsOneWidget);
+      expect(find.textContaining('≈'), findsOneWidget);
+      await tester.tap(find.byTooltip('Zatvori vozilo'));
+      await tester.pumpAndSettle();
+      expect(find.text('Dolazak na stanicu'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       c.dispose();

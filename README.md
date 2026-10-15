@@ -42,9 +42,10 @@ gradovima i opštinama u regionu.
 
 - stvarni podaci Ministarstva za trolejbus 106 Otoka–Vogošća i tramvaj 3
 - oba smjera, stanice i trase na postojećoj BSL dark Google mapi
+- žuti 3D prikazi vozila, glatko kretanje i sljedeća stanica s ETA na dodir
 - izbor stanice, pretraga i najbliža stanica odabrane linije
 - procjene dolaska i pripadajuće koordinate vozila iz javnog API-ja
-- osvježavanje na 30 sekundi i uklanjanje zastarjelih podataka nakon 60 sekundi
+- osvježavanje na 5 sekundi i označavanje zastarjelih podataka nakon 20 sekundi
 - stvarni redovi vožnje s jasno označenim polascima s početnog terminala
 - bez simuliranih vozila; odsustvo podataka se prikazuje korisniku
 - detalji izvora i ograničenja: `lib/modules/public_transport/README.md`

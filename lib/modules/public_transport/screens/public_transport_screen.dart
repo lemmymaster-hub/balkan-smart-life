@@ -6,16 +6,15 @@ import 'package:provider/provider.dart';
 import '../../../core/context/bsl_location_context.dart';
 import '../../../core/theme/bsl_design_system.dart';
 import '../../../core/widgets/bsl_map_location_button.dart';
-import '../../../core/widgets/bsl_module_top_bar.dart';
 import '../controllers/transit_controller.dart';
+import '../map/transit_vehicle_layer.dart';
 import '../models/transit_models.dart';
 import '../widgets/transit_marker_factory.dart';
+import '../widgets/transit_vehicle_model.dart';
 
 class PublicTransportScreen extends StatefulWidget {
   final String city;
   final TransitController? controller;
-
-  /// Allows widget verification without a native Google Maps platform view.
   final WidgetBuilder? mapBuilder;
   const PublicTransportScreen({
     super.key,
@@ -30,32 +29,31 @@ class PublicTransportScreen extends StatefulWidget {
 class _PublicTransportScreenState extends State<PublicTransportScreen>
     with WidgetsBindingObserver {
   late final TransitController _transit;
-  final _search = TextEditingController();
+  late final TransitVehicleLayer _vehicles;
   GoogleNavigationViewController? _map;
+  final _atlases = <bool, Map<int, ImageDescriptor>>{};
+  ImageDescriptor? _stopIcon;
   String? _style;
   TransitRoute? _drawnRoute;
-  final _icons = <String, ImageDescriptor>{};
-  List<Marker> _markers = [];
-  List<Polyline> _polylines = [];
-  Map<String, TransitStop> _stopMarkers = {};
-  bool _syncing = false;
-  bool _pending = false;
-  bool _iconsLoading = false;
+  List<Marker> _stops = [];
+  List<Polyline> _lines = [];
+  final _stopMarkers = <String, TransitStop>{};
+  bool _loadingImages = false, _syncing = false, _pending = false;
+  int _lastVehicleRevision = -1;
+  bool? _lastFresh, _lastActive;
+  TransitRoute? _lastRoute;
   String? _mapError;
-  double _sheetExtent = .34;
-  Timer? _paddingDebounce;
 
-  LatLng _latLng(TransitPoint point) =>
-      LatLng(latitude: point.latitude, longitude: point.longitude);
-  Color get _accent => _transit.line.isTram ? BslColors.cyan : BslColors.purple;
+  LatLng _latLng(TransitPoint p) =>
+      LatLng(latitude: p.latitude, longitude: p.longitude);
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _transit = widget.controller ?? TransitController();
+    _vehicles = TransitVehicleLayer(now: _transit.now);
     _transit.addListener(_changed);
-    _search.addListener(_searchChanged);
     unawaited(_loadStyle());
     unawaited(_transit.start());
   }
@@ -63,9 +61,9 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_iconsLoading && widget.mapBuilder == null) {
-      _iconsLoading = true;
-      unawaited(_loadIcons());
+    if (!_loadingImages && widget.mapBuilder == null) {
+      _loadingImages = true;
+      unawaited(_loadImages());
     }
   }
 
@@ -78,31 +76,38 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
       _style = style;
       await _map?.setMapStyle(style);
     } catch (_) {
-      if (mounted) {
-        setState(() => _mapError = 'Stil mape trenutno nije dostupan.');
-      }
+      /* Native dark color scheme remains available. */
     }
   }
 
-  Future<void> _loadIcons() async {
+  Future<void> _loadImages() async {
     try {
-      for (final tram in [true, false]) {
-        for (final vehicle in [true, false]) {
-          final icon = await TransitMarkerFactory.create(
-            vehicle: vehicle,
-            tram: tram,
-          );
-          if (!mounted) {
-            await unregisterImage(icon);
-            return;
-          }
-          _icons['$tram:$vehicle'] = icon;
-        }
+      final icon = await TransitMarkerFactory.create(
+        vehicle: false,
+        tram: true,
+      );
+      if (!mounted) {
+        await unregisterImage(icon);
+        return;
       }
-      _scheduleMapSync();
+      _stopIcon = icon;
+      _drawnRoute = null;
+      _scheduleRoute();
+      for (final tram in [true, false]) {
+        final atlas = await TransitVehicleModel.atlas(tram: tram);
+        if (!mounted) {
+          for (final image in atlas.values) {
+            await unregisterImage(image);
+          }
+          return;
+        }
+        _atlases[tram] = atlas;
+        _vehicles.setImages(_atlases[_transit.line.isTram] ?? {});
+        _syncVehicles();
+      }
     } catch (_) {
       if (mounted) {
-        setState(() => _mapError = 'Oznake mape trenutno nisu dostupne.');
+        setState(() => _mapError = 'Prikaz vozila trenutno nije dostupan');
       }
     }
   }
@@ -110,164 +115,159 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
   void _changed() {
     if (!mounted) return;
     setState(() {});
-    _scheduleMapSync();
+    final routeChanged = !identical(_lastRoute, _transit.route);
+    if (routeChanged) {
+      _lastRoute = _transit.route;
+      _scheduleRoute();
+    }
+    if (_lastVehicleRevision != _transit.vehicleRevision ||
+        _lastFresh != _transit.fleetFresh ||
+        _lastActive != _transit.active ||
+        routeChanged) {
+      _syncVehicles();
+    }
   }
 
-  void _searchChanged() {
-    if (mounted) setState(() {});
+  void _syncVehicles() {
+    _lastVehicleRevision = _transit.vehicleRevision;
+    _lastFresh = _transit.fleetFresh;
+    _lastActive = _transit.active;
+    _vehicles.setImages(_atlases[_transit.line.isTram] ?? {});
+    _vehicles.update(
+      path: _transit.path,
+      vehicles: _transit.vehicles,
+      observedAt: _transit.fleetReceivedAt ?? _transit.now(),
+      isFresh: _transit.fleetFresh,
+      isActive: _transit.active,
+    );
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    _transit.setActive(state == AppLifecycleState.resumed);
-  }
+  void didChangeAppLifecycleState(AppLifecycleState state) =>
+      _transit.setActive(state == AppLifecycleState.resumed);
 
   Future<void> _mapCreated(GoogleNavigationViewController map) async {
     _map = map;
+    _vehicles.attach(map);
     try {
       if (_style != null) await map.setMapStyle(_style!);
       if (!mounted) return;
       await map.setMyLocationEnabled(
         context.read<BslLocationContext>().hasLocation,
       );
-      // Keep Google attribution and map controls outside the BSL panels.
-      await _updateMapPadding();
+      if (!mounted) return;
+      await map.setPadding(
+        EdgeInsets.fromLTRB(
+          12,
+          MediaQuery.paddingOf(context).top + 166,
+          12,
+          210,
+        ),
+      );
       _drawnRoute = null;
-      _scheduleMapSync();
+      _scheduleRoute();
+      _syncVehicles();
     } catch (_) {
-      if (mounted) setState(() => _mapError = 'Mapa trenutno nije dostupna.');
+      if (mounted) setState(() => _mapError = 'Mapa trenutno nije dostupna');
     }
   }
 
-  Future<void> _updateMapPadding() async {
-    if (!mounted || _map == null) return;
-    final size = MediaQuery.sizeOf(context);
-    final top = (MediaQuery.paddingOf(context).top + 250).clamp(
-      0.0,
-      size.height - 80,
-    );
-    final bottom = (size.height * _sheetExtent + 8).clamp(
-      0.0,
-      size.height - top - 40,
-    );
-    try {
-      await _map?.setPadding(EdgeInsets.fromLTRB(12, top, 12, bottom));
-    } catch (_) {
-      /* A resizing map must not interrupt the station list. */
-    }
-  }
-
-  void _scheduleMapSync() {
+  void _scheduleRoute() {
     _pending = true;
-    if (!_syncing) unawaited(_syncMap());
+    if (!_syncing) unawaited(_syncRoute());
   }
 
-  Future<void> _syncMap() async {
+  Future<void> _syncRoute() async {
     _syncing = true;
     try {
-      while (mounted && _pending && _map != null) {
+      while (_pending && mounted && _map != null) {
         _pending = false;
-        final map = _map!;
-        final route = _transit.route;
-        final tram = _transit.line.isTram;
-        final accent = _accent;
-        final arrivals = [..._transit.arrivals];
-        if (_markers.isNotEmpty) await map.removeMarkers(_markers);
-        _markers = [];
-        _stopMarkers = {};
-        if (!mounted) return;
-        final stops = route?.stops ?? <TransitStop>[];
-        final vehicles = arrivals.where((a) => a.point != null).toList();
-        final created = await map.addMarkers([
-          for (final stop in stops)
+        final map = _map!, route = _transit.route;
+        if (identical(route, _drawnRoute) && _stops.isNotEmpty) continue;
+        if (_stops.isNotEmpty) await map.removeMarkers(_stops);
+        if (_lines.isNotEmpty) await map.removePolylines(_lines);
+        _stops = [];
+        _lines = [];
+        _stopMarkers.clear();
+        if (route == null) {
+          _drawnRoute = null;
+          continue;
+        }
+        final markers = await map.addMarkers([
+          for (final stop in route.stops)
             MarkerOptions(
               position: _latLng(stop.point),
-              icon: _icons['$tram:false'] ?? ImageDescriptor.defaultImage,
+              icon: _stopIcon ?? ImageDescriptor.defaultImage,
               consumeTapEvents: true,
-              zIndex: stop.id == _transit.stop?.id ? 3 : 1,
-              infoWindow: InfoWindow(title: stop.name),
-            ),
-          for (final vehicle in vehicles)
-            MarkerOptions(
-              position: _latLng(vehicle.point!),
-              icon: _icons['$tram:true'] ?? ImageDescriptor.defaultImage,
-              zIndex: 4,
-              infoWindow: InfoWindow(
-                title: '${_transit.line.code} • ${vehicle.operatorName}',
-                snippet:
-                    'Pozicija uz procjenu dolaska; vrijeme GPS mjerenja nije navedeno',
-              ),
+              anchor: const MarkerAnchor(u: .5, v: .5),
+              zIndex: 1,
             ),
         ]);
         if (!mounted) return;
-        _markers = created.whereType<Marker>().toList();
-        for (var i = 0; i < stops.length && i < created.length; i++) {
-          final marker = created[i];
-          if (marker != null) _stopMarkers[marker.markerId] = stops[i];
+        _stops = markers.whereType<Marker>().toList();
+        for (var i = 0; i < markers.length && i < route.stops.length; i++) {
+          final marker = markers[i];
+          if (marker != null) _stopMarkers[marker.markerId] = route.stops[i];
         }
-        if (!identical(route, _drawnRoute)) {
-          if (_polylines.isNotEmpty) await map.removePolylines(_polylines);
-          _polylines = [];
-          if (route != null) {
-            final lines = await map.addPolylines([
-              PolylineOptions(
-                points: route.points.map(_latLng).toList(),
-                strokeColor: accent,
-                strokeWidth: 5,
-              ),
-            ]);
-            _polylines = lines.whereType<Polyline>().toList();
-            await _fitRoute(route);
-          }
-          _drawnRoute = route;
+        final lines = await map.addPolylines([
+          PolylineOptions(
+            points: route.points.map(_latLng).toList(),
+            strokeColor: BslColors.cyan.withValues(alpha: .75),
+            strokeWidth: 4,
+          ),
+        ]);
+        _lines = lines.whereType<Polyline>().toList();
+        _drawnRoute = route;
+        var south = 90.0, north = -90.0, west = 180.0, east = -180.0;
+        for (final p in route.points) {
+          if (p.latitude < south) south = p.latitude;
+          if (p.latitude > north) north = p.latitude;
+          if (p.longitude < west) west = p.longitude;
+          if (p.longitude > east) east = p.longitude;
         }
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(
-          () => _mapError =
-              'Prikaz mape nije osvježen. Podaci su dostupni u spisku.',
+        await map.animateCamera(
+          CameraUpdate.newLatLngBounds(
+            LatLngBounds(
+              southwest: LatLng(latitude: south, longitude: west),
+              northeast: LatLng(latitude: north, longitude: east),
+            ),
+            padding: 24,
+          ),
         );
       }
+    } catch (_) {
+      if (mounted) setState(() => _mapError = 'Mapa trenutno nije osvježena');
     } finally {
       _syncing = false;
     }
   }
 
-  Future<void> _fitRoute(TransitRoute route) async {
-    if (route.points.isEmpty) return;
-    var south = 90.0, north = -90.0, west = 180.0, east = -180.0;
-    for (final point in route.points) {
-      if (point.latitude < south) south = point.latitude;
-      if (point.latitude > north) north = point.latitude;
-      if (point.longitude < west) west = point.longitude;
-      if (point.longitude > east) east = point.longitude;
-    }
-    await _map?.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(latitude: south, longitude: west),
-          northeast: LatLng(latitude: north, longitude: east),
-        ),
-        padding: 28,
-      ),
-    );
-  }
-
-  Future<void> _selectStop(TransitStop stop) async {
-    unawaited(_transit.selectStop(stop));
+  Future<void> _focus(TransitPoint point) async {
     try {
       await _map?.animateCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(target: _latLng(stop.point), zoom: 15.5),
+          CameraPosition(target: _latLng(point), zoom: 15.5, tilt: 40),
         ),
       );
-    } catch (_) {
-      /* The stop list remains usable without the native map. */
+    } catch (_) {}
+  }
+
+  void _markerTap(String id) {
+    final trip = _vehicles.tripForMarker(id);
+    if (trip != null) {
+      unawaited(_transit.selectVehicle(trip));
+      final point = _transit.selectedVehicle?.point;
+      if (point != null) unawaited(_focus(point));
+      return;
+    }
+    final stop = _stopMarkers[id];
+    if (stop != null) {
+      unawaited(_transit.selectStop(stop));
+      unawaited(_focus(stop.point));
     }
   }
 
-  Future<void> _nearestStop() async {
+  Future<void> _nearest() async {
     final location = context.read<BslLocationContext>();
     if (location.shouldOpenSettings) {
       await location.openRelevantSettings();
@@ -275,326 +275,361 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
     }
     await location.refresh();
     if (!mounted) return;
-    final current = location.location;
-    final stops = _transit.route?.stops;
-    if (current == null || stops == null || stops.isEmpty) {
+    final p = location.location, route = _transit.route;
+    if (p == null || route == null) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(location.statusMessage)));
       return;
     }
-    final position = TransitPoint(current.latitude, current.longitude);
-    final sorted = [...stops]
+    final point = TransitPoint(p.latitude, p.longitude);
+    final stops = [...route.stops]
       ..sort(
-        (a, b) => a.point
-            .distanceTo(position)
-            .compareTo(b.point.distanceTo(position)),
+        (a, b) =>
+            a.point.distanceTo(point).compareTo(b.point.distanceTo(point)),
       );
+    if (stops.isEmpty) return;
+    await _transit.selectStop(stops.first);
+    if (!mounted) return;
     try {
       await _map?.setMyLocationEnabled(true);
     } catch (_) {}
-    if (mounted) await _selectStop(sorted.first);
+    await _focus(stops.first.point);
   }
 
-  void _showTimetable() {
+  Future<void> _chooseStop() async {
+    final stops = _transit.route?.stops;
+    if (stops == null) return;
+    final selected = await showModalBottomSheet<TransitStop>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: BslColors.bgDark,
+      builder: (_) => _StopPicker(stops: stops),
+    );
+    if (selected != null && mounted) {
+      unawaited(_transit.selectStop(selected));
+      unawaited(_focus(selected.point));
+    }
+  }
+
+  void _timetable() => unawaited(
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: BslColors.bgDark,
       builder: (_) => _TimetableSheet(controller: _transit),
-    );
-  }
+    ),
+  );
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _transit.removeListener(_changed);
+    _vehicles.dispose();
     if (widget.controller == null) _transit.dispose();
-    _search.dispose();
-    _paddingDebounce?.cancel();
-    for (final icon in _icons.values) {
-      unawaited(unregisterImage(icon));
+    for (final atlas in _atlases.values) {
+      for (final image in atlas.values) {
+        unawaited(unregisterImage(image));
+      }
     }
+    final stopIcon = _stopIcon;
+    if (stopIcon != null) unawaited(unregisterImage(stopIcon));
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final location = context.watch<BslLocationContext>();
-    final query = _search.text.trim().toLowerCase();
-    final stops = (_transit.route?.stops ?? <TransitStop>[])
-        .where((s) => s.name.toLowerCase().contains(query))
-        .toList();
+    final selected = _transit.selectedVehicle;
+    final arrival = selected == null
+        ? _transit.selectedStationArrival
+        : (_transit.nextFresh ? _transit.nextArrival : null);
+    final next = selected != null;
+    final station = next ? _transit.nextStop : _transit.stop;
+    final status = _transit.liveStatus;
     return Scaffold(
       backgroundColor: BslColors.bgDark,
       body: Stack(
+        fit: StackFit.expand,
         children: [
           widget.mapBuilder?.call(context) ??
               GoogleMapsNavigationView(
                 onViewCreated: (map) => unawaited(_mapCreated(map)),
                 initialCameraPosition: const CameraPosition(
-                  target: LatLng(latitude: 43.865, longitude: 18.375),
-                  zoom: 11.5,
+                  target: LatLng(latitude: 43.86, longitude: 18.38),
+                  zoom: 12,
+                  tilt: 40,
                 ),
                 initialNavigationUIEnabledPreference:
                     NavigationUIEnabledPreference.disabled,
                 initialMapColorScheme: MapColorScheme.dark,
                 initialMapToolbarEnabled: false,
                 initialZoomControlsEnabled: false,
-                onMarkerClicked: (id) {
-                  final stop = _stopMarkers[id];
-                  if (stop != null) unawaited(_selectStop(stop));
-                },
+                initialRotateGesturesEnabled: false,
+                initialTiltGesturesEnabled: false,
+                onMarkerClicked: _markerTap,
               ),
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                BslModuleTopBar(
-                  title: 'Gradski prevoz',
-                  subtitle: 'Sarajevo • linije 106 i 3',
-                  badge: _transit.line.code,
-                  searchHint: 'Pretraži stanice odabranog smjera',
-                  searchController: _search,
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BslDecorations.glassCard(),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            for (final line in TransitLine.supported)
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 3,
-                                  ),
-                                  child: ChoiceChip(
-                                    label: Text(
-                                      '${line.isTram ? 'Tramvaj' : 'Trolejbus'} ${line.code}',
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    selected: line.id == _transit.line.id,
-                                    selectedColor: BslColors.glassBlue,
-                                    backgroundColor: BslColors.bgDark,
-                                    labelStyle: const TextStyle(
-                                      color: Colors.white,
-                                    ),
-                                    onSelected: (_) {
-                                      _search.clear();
-                                      unawaited(_transit.selectLine(line));
-                                    },
-                                  ),
+            child: Container(
+              padding: EdgeInsets.fromLTRB(
+                14,
+                MediaQuery.paddingOf(context).top + 8,
+                14,
+                10,
+              ),
+              decoration: BslDecorations.glassCard(radius: 26),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        tooltip: 'Nazad',
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const Expanded(
+                        child: Text(
+                          'Gradski prevoz',
+                          style: BslTextStyles.body,
+                        ),
+                      ),
+                      Icon(
+                        _transit.fleetFresh ? Icons.sensors : Icons.sensors_off,
+                        color: _transit.fleetFresh
+                            ? BslColors.success
+                            : BslColors.textSecondary,
+                        size: 18,
+                      ),
+                      PopupMenuButton<String>(
+                        tooltip: 'Više',
+                        color: BslColors.bgDark,
+                        icon: const Icon(Icons.more_vert, color: Colors.white),
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(
+                            value: 'refresh',
+                            child: Text('Osvježi'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'timetable',
+                            child: Text('Red vožnje'),
+                          ),
+                        ],
+                        onSelected: (value) {
+                          if (value == 'timetable') {
+                            _timetable();
+                          } else if (_transit.routeError != null) {
+                            unawaited(_transit.selectLine(_transit.line));
+                          } else {
+                            unawaited(_transit.refreshArrivals());
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      for (final line in TransitLine.supported.reversed)
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 3),
+                            child: ChoiceChip(
+                              showCheckmark: false,
+                              selected: line.id == _transit.line.id,
+                              selectedColor: BslColors.glassBlue,
+                              backgroundColor: BslColors.bgDark,
+                              avatar: Icon(
+                                line.isTram ? Icons.tram : Icons.directions_bus,
+                                color: TransitVehicleModel.yellow,
+                                size: 18,
+                              ),
+                              label: Text(
+                                '${line.isTram ? 'Tramvaj' : 'Trolejbus'} ${line.code}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: BslTextStyles.body.copyWith(
+                                  fontSize: 13,
                                 ),
                               ),
-                          ],
-                        ),
-                        if (_transit.directions.isNotEmpty)
-                          DropdownButtonHideUnderline(
-                            child: DropdownButton<int>(
-                              value: _transit.direction?.id,
-                              isExpanded: true,
-                              dropdownColor: BslColors.bgDark,
-                              iconEnabledColor: BslColors.cyan,
-                              style: BslTextStyles.body,
-                              items: [
-                                for (final d in _transit.directions)
-                                  DropdownMenuItem(
-                                    value: d.id,
-                                    child: Text(
-                                      d.name,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                              ],
-                              onChanged: (id) {
-                                if (id != null) {
-                                  _search.clear();
-                                  unawaited(
-                                    _transit.selectDirection(
-                                      _transit.directions.firstWhere(
-                                        (d) => d.id == id,
-                                      ),
-                                    ),
-                                  );
-                                }
-                              },
+                              onSelected: (_) =>
+                                  unawaited(_transit.selectLine(line)),
                             ),
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
-                ),
-              ],
+                  if (_transit.directions.isNotEmpty)
+                    DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: _transit.direction?.id,
+                        isExpanded: true,
+                        isDense: true,
+                        dropdownColor: BslColors.bgDark,
+                        style: BslTextStyles.subtitle.copyWith(
+                          color: Colors.white,
+                        ),
+                        iconEnabledColor: BslColors.cyan,
+                        items: [
+                          for (final d in _transit.directions)
+                            DropdownMenuItem(
+                              value: d.id,
+                              child: Text(
+                                d.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                        onChanged: (id) {
+                          if (id != null) {
+                            unawaited(
+                              _transit.selectDirection(
+                                _transit.directions.firstWhere(
+                                  (d) => d.id == id,
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  if (_transit.loading)
+                    const LinearProgressIndicator(
+                      color: BslColors.cyan,
+                      minHeight: 2,
+                    ),
+                ],
+              ),
             ),
           ),
           Positioned(
-            right: 12,
-            top: MediaQuery.paddingOf(context).top + 255,
+            right: 14,
+            bottom: 230,
             child: BslMapLocationButton(
               isLoading: location.isLoading,
               hasLocation: location.hasLocation,
               needsAttention: location.shouldOpenSettings,
-              onTap: () => unawaited(_nearestStop()),
+              onTap: () => unawaited(_nearest()),
             ),
           ),
-          NotificationListener<DraggableScrollableNotification>(
-            onNotification: (notification) {
-              _sheetExtent = notification.extent;
-              _paddingDebounce?.cancel();
-              _paddingDebounce = Timer(const Duration(milliseconds: 80), () {
-                unawaited(_updateMapPadding());
-              });
-              return false;
-            },
-            child: DraggableScrollableSheet(
-              initialChildSize: .34,
-              minChildSize: .20,
-              maxChildSize: .72,
-              builder: (context, scrollController) => Container(
-                decoration: BslDecorations.bottomDock(),
-                child: SafeArea(
-                  top: false,
-                  child: ListView(
-                    controller: scrollController,
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                    children: [
-                      Center(
-                        child: Container(
-                          width: 40,
-                          height: 4,
-                          margin: const EdgeInsets.only(bottom: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white54,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                      ),
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 0,
+            child: SafeArea(
+              top: false,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BslDecorations.glassCard(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (next)
                       Row(
                         children: [
-                          Icon(
-                            _transit.line.isTram
-                                ? Icons.tram
-                                : Icons.directions_bus,
-                            color: _accent,
+                          SizedBox(
+                            width: 50,
+                            height: 50,
+                            child: CustomPaint(
+                              painter: _VehiclePreview(
+                                tram: _transit.line.isTram,
+                              ),
+                            ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              _transit.stop?.name ?? _transit.line.name,
+                              '${_transit.line.isTram ? 'Tramvaj' : 'Trolejbus'} ${_transit.line.code}',
                               style: BslTextStyles.body,
                             ),
                           ),
                           IconButton(
-                            tooltip: 'Osvježi',
-                            onPressed: _transit.refreshing
-                                ? null
-                                : () {
-                                    if (_transit.routeError != null) {
-                                      unawaited(
-                                        _transit.selectLine(_transit.line),
-                                      );
-                                    } else {
-                                      unawaited(_transit.refreshArrivals());
-                                    }
-                                  },
+                            tooltip: 'Zatvori vozilo',
+                            onPressed: _transit.clearVehicle,
                             icon: const Icon(
-                              Icons.refresh,
-                              color: BslColors.cyan,
+                              Icons.close,
+                              color: Colors.white70,
                             ),
                           ),
                         ],
                       ),
-                      if (_transit.loading)
-                        const LinearProgressIndicator(color: BslColors.cyan),
-                      if (_transit.routeError != null)
-                        Text(_transit.routeError!, style: BslTextStyles.body),
-                      if (_mapError != null)
-                        Text(_mapError!, style: BslTextStyles.subtitle),
-                      Text(_transit.liveStatus, style: BslTextStyles.subtitle),
-                      if (_transit.receivedAt != null)
-                        Text(
-                          'Provjereno ${_clock(_transit.receivedAt!)} • izvor: javniprevozks.ba',
-                          style: BslTextStyles.subtitle.copyWith(fontSize: 10),
-                        ),
-                      if (_transit.arrivals.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        for (final arrival in _transit.arrivals.take(5))
-                          ListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            leading: Icon(
-                              _transit.line.isTram
-                                  ? Icons.tram
-                                  : Icons.directions_bus,
-                              color: _accent,
-                            ),
-                            title: Text(
-                              '${arrival.operatorName} • ${_transit.line.code}',
-                              style: BslTextStyles.body,
-                            ),
-                            subtitle: Text(
-                              'Očekivano ${_clock(arrival.expectedAt)}',
-                              style: BslTextStyles.subtitle,
-                            ),
-                            trailing: Text(
-                              '${arrival.minutesFrom(_transit.now())} min',
-                              style: BslTextStyles.body.copyWith(
-                                color: BslColors.cyan,
-                              ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: next ? null : () => unawaited(_chooseStop()),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  next
+                                      ? 'Sljedeća stanica'
+                                      : 'Dolazak na stanicu',
+                                  style: BslTextStyles.subtitle,
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  station?.name ??
+                                      (next
+                                          ? 'Krajnja stanica / podatak nije dostupan'
+                                          : 'Odaberi stanicu'),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: BslTextStyles.body.copyWith(
+                                    fontSize: 17,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        const Text(
-                          'Pozicije su iz odgovora za dolaske. Izvor ne navodi vrijeme GPS mjerenja.',
-                          style: BslTextStyles.subtitle,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          arrival == null
+                              ? (_transit.nextLoading && next ? '…' : '—')
+                              : _eta(arrival, _transit.now()),
+                          style: const TextStyle(
+                            color: TransitVehicleModel.yellow,
+                            fontSize: 29,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ],
-                      const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: _transit.direction == null
-                            ? null
-                            : _showTimetable,
-                        icon: const Icon(Icons.schedule),
-                        label: const Text('Red vožnje • polasci s terminala'),
+                    ),
+                    const SizedBox(height: 10),
+                    if (next && arrival == null && !_transit.nextLoading)
+                      const Text(
+                        'Vrijeme dolaska trenutno nije dostupno',
+                        style: BslTextStyles.subtitle,
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Stanice u smjeru vožnje',
-                        style: BslTextStyles.body,
+                    if (status.isNotEmpty)
+                      Text(status, style: BslTextStyles.subtitle)
+                    else if (!next)
+                      const Text(
+                        'Dodirni vozilo za sljedeću stanicu',
+                        style: BslTextStyles.subtitle,
                       ),
-                      if (stops.isEmpty &&
-                          !_transit.loading &&
-                          _transit.routeError == null)
-                        const Text(
-                          'Nema stanica za ovu pretragu.',
-                          style: BslTextStyles.subtitle,
+                    if (_mapError != null)
+                      Text(_mapError!, style: BslTextStyles.subtitle),
+                    if (!next)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: () => unawaited(_chooseStop()),
+                          icon: const Icon(Icons.swap_horiz, size: 18),
+                          label: const Text('Promijeni stanicu'),
                         ),
-                      for (final stop in stops)
-                        ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          selected: stop.id == _transit.stop?.id,
-                          selectedTileColor: BslColors.glassBlue,
-                          leading: Icon(
-                            Icons.trip_origin,
-                            color: _accent,
-                            size: 18,
-                          ),
-                          title: Text(stop.name, style: BslTextStyles.body),
-                          onTap: () {
-                            FocusScope.of(context).unfocus();
-                            unawaited(_selectStop(stop));
-                          },
-                        ),
-                    ],
-                  ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -603,6 +638,81 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
       ),
     );
   }
+}
+
+String _eta(TransitArrival arrival, DateTime now) {
+  final minutes = arrival.minutesFrom(now);
+  return minutes == 0 ? 'Stiže' : '≈ $minutes min';
+}
+
+class _VehiclePreview extends CustomPainter {
+  final bool tram;
+  const _VehiclePreview({required this.tram});
+  @override
+  void paint(Canvas canvas, Size size) =>
+      TransitVehicleModel.paint(canvas, size, tram: tram, bearing: 55);
+  @override
+  bool shouldRepaint(_VehiclePreview old) => old.tram != tram;
+}
+
+class _StopPicker extends StatefulWidget {
+  final List<TransitStop> stops;
+  const _StopPicker({required this.stops});
+  @override
+  State<_StopPicker> createState() => _StopPickerState();
+}
+
+class _StopPickerState extends State<_StopPicker> {
+  String query = '';
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: SizedBox(
+      height: MediaQuery.sizeOf(context).height * .6,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              autofocus: true,
+              style: BslTextStyles.body,
+              onChanged: (value) =>
+                  setState(() => query = value.trim().toLowerCase()),
+              decoration: const InputDecoration(
+                hintText: 'Pretraži stanice',
+                prefixIcon: Icon(Icons.search),
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              children: [
+                if (!widget.stops.any(
+                  (s) => s.name.toLowerCase().contains(query),
+                ))
+                  const ListTile(
+                    title: Text(
+                      'Nema stanica za ovu pretragu.',
+                      style: BslTextStyles.body,
+                    ),
+                  ),
+                for (final stop in widget.stops.where(
+                  (s) => s.name.toLowerCase().contains(query),
+                ))
+                  ListTile(
+                    leading: const Icon(
+                      Icons.trip_origin,
+                      color: BslColors.cyan,
+                    ),
+                    title: Text(stop.name, style: BslTextStyles.body),
+                    onTap: () => Navigator.pop(context, stop),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 String _clock(DateTime instant) {

@@ -58,6 +58,24 @@ class FakeTransitGateway implements TransitGateway {
 
 void main() {
   test(
+    'vehicle click requests the next station ETA for the same travel order',
+    () async {
+      final c = TransitController(
+        gateway: FakeTransitGateway(),
+        now: () => DateTime.utc(2026, 10, 15, 20),
+      );
+      addTearDown(c.dispose);
+      await c.start();
+      await c.selectVehicle(1);
+      expect(c.nextStop?.id, 2);
+      expect(c.nextArrival?.tripId, 1);
+      expect(c.nextFresh, isTrue);
+      c.clearVehicle();
+      expect(c.selectedVehicle, isNull);
+    },
+  );
+
+  test(
     'expires vehicle positions after 60 seconds and clears on network error',
     () async {
       var now = DateTime.utc(2026, 10, 15, 20);
