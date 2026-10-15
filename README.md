@@ -38,6 +38,17 @@ gradovima i opštinama u regionu.
 - road-snapped praćenje, glasovne upute i automatski proračun nove rute
 - broj u zaglavlju prikazuje mapirane parkinge i dopunjava grad iz koordinata
 
+### Gradski prevoz — Sarajevo
+
+- stvarni podaci Ministarstva za trolejbus 106 Otoka–Vogošća i tramvaj 3
+- oba smjera, stanice i trase na postojećoj BSL dark Google mapi
+- izbor stanice, pretraga i najbliža stanica odabrane linije
+- procjene dolaska i pripadajuće koordinate vozila iz javnog API-ja
+- osvježavanje na 30 sekundi i uklanjanje zastarjelih podataka nakon 60 sekundi
+- stvarni redovi vožnje s jasno označenim polascima s početnog terminala
+- bez simuliranih vozila; odsustvo podataka se prikazuje korisniku
+- detalji izvora i ograničenja: `lib/modules/public_transport/README.md`
+
 ### EL Punjači
 
 - OSM punjači za sve aktivne BSL gradove
@@ -149,7 +160,7 @@ Prije produkcijske objave u pravne napomene aplikacije treba dodati službene
 Aktivna razvojna grana i izvor istine je `main`. Nove funkcionalnosti trebaju
 se razvijati u kratkotrajnim granama i vraćati u `main` nakon provjere.
 
-Planirani moduli uključuju gradski prevoz, taxi, turističke informacije,
+Planirani moduli uključuju proširenje gradskog prevoza, taxi, turističke informacije,
 lokalne vijesti, produkcijsku payment integraciju novčanika, prijavu problema,
 nagrade i AI asistenta.
 
