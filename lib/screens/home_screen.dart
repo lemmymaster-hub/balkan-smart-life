@@ -16,6 +16,7 @@ import '../modules/ai_assistant/models/bsl_ai_request_context.dart';
 import '../modules/atms/screens/atm_map_screen.dart';
 import '../modules/ev_chargers/screens/ev_chargers_map_screen.dart';
 import '../modules/parkiraj/screens/parkiraj_home_screen.dart';
+import '../modules/public_transport/screens/public_transport_screen.dart';
 import '../modules/wallet/screens/wallet_home_screen.dart';
 import '../services/weather_service.dart';
 import '../widgets/animated_logo.dart';
@@ -837,7 +838,19 @@ class _MetroTileState extends State<MetroTile>
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => AtmMapScreen(city: widget.selectedCity),
+                    builder: (context) =>
+                        AtmMapScreen(city: widget.selectedCity),
+                  ),
+                );
+                return;
+              }
+
+              if (widget.item.id == HomeModuleIds.publicTransport) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        PublicTransportScreen(city: widget.selectedCity),
                   ),
                 );
                 return;
