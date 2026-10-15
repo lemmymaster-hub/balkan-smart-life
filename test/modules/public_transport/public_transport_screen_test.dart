@@ -19,7 +19,10 @@ void main() {
         now: () => DateTime.utc(2026, 10, 15, 20),
       );
       final location = BslLocationContext();
-      addTearDown(c.dispose);
+      var controllerDisposed = false;
+      addTearDown(() {
+        if (!controllerDisposed) c.dispose();
+      });
       addTearDown(location.dispose);
       await tester.pumpWidget(
         ChangeNotifierProvider.value(
@@ -47,6 +50,8 @@ void main() {
       expect(find.text('Nema stanica za ovu pretragu.'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
+      c.dispose();
+      controllerDisposed = true;
     },
   );
 }
