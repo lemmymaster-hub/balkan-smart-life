@@ -51,6 +51,16 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Nema stanica za ovu pretragu.'), findsOneWidget);
+      Navigator.of(tester.element(find.byType(TextField))).pop();
+      await tester.pumpAndSettle();
+      await c.selectVehicle(1);
+      await tester.pumpAndSettle();
+      expect(find.text('Sljedeća stanica'), findsOneWidget);
+      expect(find.text('Završna stanica'), findsOneWidget);
+      expect(find.textContaining('≈'), findsOneWidget);
+      await tester.tap(find.byTooltip('Zatvori vozilo'));
+      await tester.pumpAndSettle();
+      expect(find.text('Dolazak na stanicu'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       c.dispose();
