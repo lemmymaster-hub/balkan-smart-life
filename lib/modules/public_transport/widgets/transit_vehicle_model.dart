@@ -81,7 +81,7 @@ class TransitVehicleModel {
     final segmentLength = tram ? 4.8 : 6.0;
     final halfLength = tram ? 7.6 : 6.2;
     const dark = Color(0xFF17232D),
-        roof = Color(0xFFE0DFCF),
+        roof = Color(0xFFFFD653),
         glass = Color(0xFF18323D);
     for (final y in centers) {
       box(0, y, .42, 2.45, segmentLength, 2.3, yellow);
