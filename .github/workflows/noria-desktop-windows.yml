@@ -25,7 +25,7 @@ jobs:
           $dir = 'tools/noria-desktop'
           Invoke-WebRequest 'https://raw.githubusercontent.com/lemmymaster-hub/Noria-web/4480485a9876bb9e13c233aa53d01788fff89ec6/public/noria-logo-header.png' -OutFile "$dir/noria-logo.png"
           Add-Type -AssemblyName System.Drawing
-          $bmp = [System.Drawing.Bitmap]::new((Resolve-Path "$dir/noria-logo.png"))
+          $bmp = [System.Drawing.Bitmap]::new((Resolve-Path "$dir/noria-logo.png").Path)
           $icon = [System.Drawing.Icon]::FromHandle($bmp.GetHicon())
           $stream = [System.IO.File]::Create("$pwd/$dir/noria.ico")
           $icon.Save($stream)
