@@ -1,4 +1,15 @@
-NORIA DESKTOP 0.1 — Windows 10/11 x64
+NORIA DESKTOP 0.1.1 — Windows 10/11 x64
+
+NADOGRADNJA SA 0.1
+Zatvori prethodni NoriaDesktop.exe i zamijeni ga EXE fajlom iz update ZIP-a
+u ISTOM raspakovanom programskom folderu. Zadrži runtime i apks foldere.
+Ne briši %LOCALAPPDATA%\NoriaDesktop: preuzeti Android i podaci ostaju tu.
+Ponovo pokreni program: u naslovu treba da piše 0.1.1.
+Ako je priprema već završena, odmah odaberi Pokreni Android.
+Nova verzija ispravlja čekanje komandnih procesa sa pozadinskim serverom,
+provjerava prisutnost emulatora prije ADB upita i bilježi tačnu komandu kod
+timeouta. Dnevnik se čuva u %LOCALAPPDATA%\NoriaDesktop\noria-desktop.log.
+Ako i dalje ne radi, klikni Provjeri sistem pa Kopiraj dnevnik i pošalji tekst.
 
 1. Raspakuj CIJELI ZIP u svoj folder. Pokreni NoriaDesktop.exe.
 2. Odaberi „Pripremi Android”. Internet je potreban za prvo preuzimanje
@@ -63,3 +74,4 @@ IZVORI
 https://developer.android.com/studio/command-line/sdkmanager
 https://developer.android.com/studio/run/emulator-commandline
 https://developer.android.com/studio/run/emulator-acceleration
+

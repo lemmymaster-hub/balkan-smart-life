@@ -5,10 +5,11 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <AssemblyName>NoriaDesktop</AssemblyName>
     <ApplicationIcon>noria.ico</ApplicationIcon>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
   <ItemGroup><EmbeddedResource Include="noria-logo.png" /></ItemGroup>
 </Project>
+

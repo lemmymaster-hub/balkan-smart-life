@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
+using System.Net.Sockets;
 
 namespace NoriaDesktop;
 
@@ -29,7 +30,7 @@ sealed class MainWindow : Form
     bool busy;
     public MainWindow()
     {
-        Text="Noria Desktop • Android radni prostor"; Size=new Size(1160,800); MinimumSize=new Size(980,700); StartPosition=FormStartPosition.CenterScreen;
+        Text="Noria Desktop 0.1.1 • Android radni prostor"; Size=new Size(1160,800); MinimumSize=new Size(980,700); StartPosition=FormStartPosition.CenterScreen;
         BackColor=navy; ForeColor=Color.White; Font=new Font("Segoe UI",10); AutoScaleMode=AutoScaleMode.Dpi;
         engine=new Engine(WriteLog);
         try { Icon=System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
@@ -64,16 +65,19 @@ sealed class MainWindow : Form
         Add(actions,"Provjeri sistem",()=>engine.DiagnosticsAsync(),170);
         Add(actions,"Windows funkcije",()=>{ Process.Start(new ProcessStartInfo("optionalfeatures.exe"){UseShellExecute=true}); return Task.CompletedTask; },170);
         Add(actions,"Otvori podatke",()=>{ Process.Start(new ProcessStartInfo("explorer.exe",engine.Root){UseShellExecute=true}); return Task.CompletedTask; },150);
+        Add(actions,"Kopiraj dnevnik",()=>{ Clipboard.SetText(log.Text.Length>0?log.Text:"Dnevnik je prazan."); return Task.CompletedTask; },145);
         main.Controls.Add(actions,0,4); main.Controls.Add(log,0,5);
         main.Controls.Add(new Label { Text="Android 15 • 1920 × 1080 • 4 GB RAM • 2 CPU | NRN radio-veze zahtijevaju zasebno testiranje", Dock=DockStyle.Fill, ForeColor=Color.FromArgb(166,196,213), Padding=new Padding(0,10,0,0) },0,6);
         WriteLog("Dobro došao. Redom odaberi pripremu, pokretanje i instalaciju aplikacija.");
         WriteLog("Ako ubrzanje nije dostupno: Windows funkcije → Windows Hypervisor Platform → restart računara.");
+        WriteLog("Verzija 0.1.1 • detaljni dnevnik: "+Path.Combine(engine.Root,"noria-desktop.log"));
         FormClosing+=(s,e)=>{ if(busy) { e.Cancel=true; MessageBox.Show(this,"Sačekaj završetak trenutne operacije.","Noria Desktop"); } };
     }
     void Add(Control parent,string title,Func<Task> action,int width=215)
     {
         var b=new Button { Text=title, Size=new Size(width,42), Margin=new Padding(0,0,8,9), BackColor=Color.FromArgb(7,51,85), ForeColor=Color.White, FlatStyle=FlatStyle.Flat, Cursor=Cursors.Hand };
         b.FlatAppearance.BorderColor=cyan; buttons.Add(b); parent.Controls.Add(b);
+        b.Paint+=(_,e)=>{ if(!b.Enabled) { e.Graphics.Clear(b.BackColor); ControlPaint.DrawBorder(e.Graphics,b.ClientRectangle,cyan,ButtonBorderStyle.Solid); TextRenderer.DrawText(e.Graphics,b.Text,b.Font,b.ClientRectangle,Color.FromArgb(166,196,213),TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter); } };
         b.Click+=async(_,_)=>{ if(busy)return; busy=true; buttons.ForEach(x=>x.Enabled=false); status.Text=title+"…";
             try { await action(); status.Text="Završeno • "+title; }
             catch(Exception ex) { status.Text="Operacija nije završena"; WriteLog("GREŠKA: "+ex.Message); MessageBox.Show(this,ex.Message,"Noria Desktop",MessageBoxButtons.OK,MessageBoxIcon.Warning); }
@@ -104,7 +108,11 @@ sealed class Engine
     string Java=>Path.Combine(AppContext.BaseDirectory,"runtime","java");
     string Manager=>Path.Combine(Sdk,"cmdline-tools","latest","bin","sdkmanager.bat");
     const string Image="system-images;android-35;google_apis;x86_64", Serial="emulator-5580", Avd="NoriaDesktop";
-    public Engine(Action<string> logger) { log=logger; Directory.CreateDirectory(Root); }
+    public Engine(Action<string> logger)
+    {
+        Directory.CreateDirectory(Root); var sync=new object();
+        log=line=>{ lock(sync) { try { File.AppendAllText(Path.Combine(Root,"noria-desktop.log"),$"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {line}{Environment.NewLine}"); } catch { } } logger(line); };
+    }
     void EnvironmentFor(ProcessStartInfo p)
     {
         p.Environment["ANDROID_HOME"]=Sdk; p.Environment["ANDROID_SDK_ROOT"]=Sdk;
@@ -129,16 +137,27 @@ sealed class Engine
     }
     async Task<(int Code,string Text)> Run(string file,IEnumerable<string> args,string? input=null,int seconds=1800,bool quiet=false)
     {
-        var p=Info(file,args); p.RedirectStandardOutput=true; p.RedirectStandardError=true; p.RedirectStandardInput=true;
+        var arguments=args.ToArray(); var label=Path.GetFileName(file)+" "+string.Join(" ",arguments);
+        if(!quiet)log("Pokrećem: "+label);
+        var p=Info(file,arguments); p.RedirectStandardOutput=true; p.RedirectStandardError=true; p.RedirectStandardInput=true;
         using var process=new Process { StartInfo=p }; var text=new StringBuilder(); var sync=new object();
-        void Line(object s,DataReceivedEventArgs e) { if(e.Data==null)return; lock(sync)text.AppendLine(e.Data); if(!quiet)log(e.Data); }
-        process.OutputDataReceived+=Line; process.ErrorDataReceived+=Line;
+        var stdoutDone=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stderrDone=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Line(DataReceivedEventArgs e,TaskCompletionSource done) { if(e.Data==null) { done.TrySetResult(); return; } lock(sync)text.AppendLine(e.Data); if(!quiet)log(e.Data); }
+        process.OutputDataReceived+=(_,e)=>Line(e,stdoutDone); process.ErrorDataReceived+=(_,e)=>Line(e,stderrDone);
         process.Start(); process.BeginOutputReadLine(); process.BeginErrorReadLine();
         if(input!=null)await process.StandardInput.WriteAsync(input); process.StandardInput.Close();
-        using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
-        try { await process.WaitForExitAsync(timeout.Token); process.WaitForExit(); }
-        catch(OperationCanceledException) { try{process.Kill(true);}catch{} throw new TimeoutException("Operacija je prekoračila vrijeme. Provjeri dnevnik i pokušaj ponovo."); }
-        return(process.ExitCode,text.ToString());
+        // Wait for the command, not EOF on pipes inherited by a background server.
+        // WaitForExitAsync and parameterless WaitForExit can wait for that server too.
+        bool exited=await Task.Run(()=>process.WaitForExit(checked(seconds*1000)));
+        if(!exited) { try{process.Kill(true);}catch{} }
+        await Task.WhenAny(Task.WhenAll(stdoutDone.Task,stderrDone.Task),Task.Delay(1000));
+        try{process.CancelOutputRead();}catch(InvalidOperationException){}
+        try{process.CancelErrorRead();}catch(InvalidOperationException){}
+        string output; lock(sync)output=text.ToString();
+        if(!exited) { log("TIMEOUT: "+label+" ("+seconds+" s)\n"+Tail(output)); throw new TimeoutException("Komanda nije završena za "+seconds+" s:\n"+label+"\n"+Tail(output)+"\nKoristi Kopiraj dnevnik za detalje."); }
+        if(!quiet)log("Završeno: "+Path.GetFileName(file)+" (kod "+process.ExitCode+")");
+        return(process.ExitCode,output);
     }
     async Task Must(string file,IEnumerable<string> args,string? input=null)
     { var r=await Run(file,args,input); if(r.Code!=0)throw new InvalidOperationException("Operacija nije uspjela. Detalji su u dnevniku.\n"+Tail(r.Text)); }
@@ -189,6 +208,13 @@ sealed class Engine
     async Task<bool> IsOurDevice()
     {
         if(!File.Exists(Adb))return false;
+        // Do not start/probe ADB when there is no emulator listening yet.
+        using(var socket=new TcpClient())
+        {
+            try { await socket.ConnectAsync("127.0.0.1",5580).WaitAsync(TimeSpan.FromMilliseconds(700)); }
+            catch(SocketException) { return false; }
+            catch(TimeoutException) { return false; }
+        }
         var state=await Run(Adb,new[]{"-s",Serial,"get-state"},seconds:15,quiet:true);
         if(state.Code!=0)return false;
         var name=await Run(Adb,new[]{"-s",Serial,"emu","avd","name"},seconds:15,quiet:true);
@@ -200,8 +226,11 @@ sealed class Engine
     {
         if(!File.Exists(Emulator)||!File.Exists(Path.Combine(Avds,Avd+".ini")))throw new InvalidOperationException("Prvo odaberi Pripremi Android.");
         if(await IsOurDevice()) { log("Noria Android je već pokrenut."); return; }
+        log("Provjera Windows ubrzanja…");
         var accel=await Run(Emulator,new[]{"-accel-check"},seconds:30);
         if(accel.Code!=0)throw new InvalidOperationException("Windows ubrzanje nije dostupno. Otvori Windows funkcije, uključi Windows Hypervisor Platform i restartuj PC.\n"+Tail(accel.Text));
+        log("Pokretanje Android Debug Bridge servera…");
+        await Must(Adb,new[]{"start-server"});
         var p=Info(Emulator,new[]{"-avd",Avd,"-port","5580","-memory","4096","-cores","2","-gpu",software?"swiftshader_indirect":"auto","-no-boot-anim","-no-snapshot"});
         using var process=Process.Start(p)!;
         log("Čekam pokretanje Android sistema…");
@@ -237,9 +266,9 @@ sealed class Engine
         log("Windows: "+Environment.OSVersion+" | CPU dostupno: "+Environment.ProcessorCount);
         log("Podaci: "+Root); log("Java: "+File.Exists(Path.Combine(Java,"bin","java.exe")));
         log("Slobodan prostor: "+new DriveInfo(Path.GetPathRoot(Root)!).AvailableFreeSpace/1024/1024/1024+" GB");
-        if(File.Exists(Emulator))await Run(Emulator,new[]{"-accel-check"},seconds:30);
+        if(File.Exists(Emulator)) { try { await Run(Emulator,new[]{"-accel-check"},seconds:45); } catch(Exception ex) { log("Provjera ubrzanja: "+ex.Message); } }
         else log("Android emulator još nije preuzet.");
-        if(File.Exists(Adb))await Run(Adb,new[]{"devices","-l"},seconds:30);
+        if(File.Exists(Adb)) { try { await Run(Adb,new[]{"devices","-l"},seconds:45); } catch(Exception ex) { log("Provjera ADB: "+ex.Message); } }
     }
     public static int SelfTest()
     {
@@ -257,7 +286,19 @@ sealed class Engine
             File.WriteAllText(bat,"@echo off\r\necho %~1\r\n\"%JAVA_HOME%\\bin\\java.exe\" -version\r\nexit /b %errorlevel%\r\n");
             var result=e.Run(bat,new[]{Image},seconds:30,quiet:true).GetAwaiter().GetResult();
             if(result.Code!=0||!result.Text.Contains(Image)||!result.Text.Contains("openjdk"))return 6;
+            // Regression: a command exits but a background child keeps its pipes open.
+            var child=Path.Combine(dir,"background.bat");
+            File.WriteAllText(child,"@echo off\r\nping -n 12 127.0.0.1 >nul\r\n");
+            var parent=Path.Combine(dir,"parent.bat");
+            File.WriteAllText(parent,"@echo off\r\nstart \"\" /b cmd /d /c \"\""+child+"\"\"\r\necho PARENT_FINISHED\r\nexit /b 0\r\n");
+            var watch=Stopwatch.StartNew();
+            var background=e.Run(parent,Array.Empty<string>(),seconds:5,quiet:true).GetAwaiter().GetResult();
+            if(background.Code!=0||!background.Text.Contains("PARENT_FINISHED")||watch.Elapsed.TotalSeconds>4)return 7;
+            // A genuine hung command must still time out, naming the offending command.
+            try { e.Run(child,Array.Empty<string>(),seconds:1,quiet:true).GetAwaiter().GetResult(); return 8; }
+            catch(TimeoutException ex) { if(!ex.Message.Contains("background.bat"))return 9; }
             return 0;
-        } finally { Directory.Delete(dir,true); }
+        } finally { try { Directory.Delete(dir,true); } catch(IOException) { } }
     }
 }
+

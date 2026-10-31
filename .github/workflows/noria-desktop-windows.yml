@@ -96,6 +96,18 @@ jobs:
           $bmp.Save("$pwd/NoriaDesktop-preview.png")
           $g.Dispose(); $bmp.Dispose()
           Stop-Process -Id $p.Id
+      - name: Prepare small update package
+        shell: pwsh
+        run: |
+          New-Item update -ItemType Directory -Force
+          Copy-Item package/NoriaDesktop.exe update/NoriaDesktop.exe
+          Copy-Item package/README.txt update/README.txt
+      - name: Upload small update
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoriaDesktop-0.1.1-update
+          path: update/
+          retention-days: 30
       - name: Upload application
         uses: actions/upload-artifact@v4
         with:
@@ -107,3 +119,4 @@ jobs:
         with:
           name: NoriaDesktop-preview
           path: NoriaDesktop-preview.png
+
