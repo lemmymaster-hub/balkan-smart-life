@@ -203,7 +203,9 @@ sealed class Engine
         if(!File.Exists(Adb))throw new FileNotFoundException("ADB nedostaje. Odaberi Pripremi Android.");
         if(await ServerVersionAsync(AdbPort,lifetime.Token)!=null)return;
         log("Pokrećem odvojeni Noria ADB server na 127.0.0.1:"+AdbPort+" (najviše 20 sekundi)…");
-        var p=Info(Adb,new[]{"-L","tcp:127.0.0.1:"+AdbPort,"server","nodaemon"});
+        // Windows ADB accepts tcp:PORT; an explicit hostname in -L is unsupported.
+        // Without -a this binds to loopback only.
+        var p=Info(Adb,new[]{"-L","tcp:"+AdbPort,"server","nodaemon"});
         p.RedirectStandardOutput=true; p.RedirectStandardError=true;
         var server=new Process { StartInfo=p };
         server.OutputDataReceived+=(_,e)=>{if(e.Data!=null)log("ADB: "+e.Data);};
