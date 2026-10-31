@@ -1,0 +1,109 @@
+name: Noria Desktop Windows
+on:
+  push:
+    branches: [build/noria-desktop-windows-20261031]
+    paths: ['tools/noria-desktop/**', '.github/workflows/noria-desktop-windows.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '21'
+      - name: Download original Noria logo and create icon
+        shell: pwsh
+        run: |
+          $dir = 'tools/noria-desktop'
+          Invoke-WebRequest 'https://raw.githubusercontent.com/lemmymaster-hub/Noria-web/4480485a9876bb9e13c233aa53d01788fff89ec6/public/noria-logo-header.png' -OutFile "$dir/noria-logo.png"
+          Add-Type -AssemblyName System.Drawing
+          $bmp = [System.Drawing.Bitmap]::new((Resolve-Path "$dir/noria-logo.png"))
+          $icon = [System.Drawing.Icon]::FromHandle($bmp.GetHicon())
+          $stream = [System.IO.File]::Create("$pwd/$dir/noria.ico")
+          $icon.Save($stream)
+          $stream.Dispose(); $icon.Dispose(); $bmp.Dispose()
+      - name: Publish standalone Windows application
+        run: dotnet publish tools/noria-desktop/NoriaDesktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o package
+      - name: Include Java runtime and documentation
+        shell: pwsh
+        run: |
+          New-Item package/runtime/java -ItemType Directory -Force
+          Copy-Item "$env:JAVA_HOME/*" package/runtime/java -Recurse -Force
+          Copy-Item tools/noria-desktop/README.txt package/README.txt
+      - name: Download verified BSL APK build
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: lemmymaster-hub/balkan-smart-life
+          run-id: 41206003783
+          name: BSL-Banja-Luka-release-1
+          path: inputs/bsl
+      - name: Download NRN APK build
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: lemmymaster-hub/mesh-messenger-test
+          run-id: 41206017615
+          name: NRN-Mesh-debug
+          path: inputs/nrn
+      - name: Verify and package Android applications
+        shell: pwsh
+        run: |
+          New-Item package/apks -ItemType Directory -Force
+          $bsl = Get-ChildItem inputs/bsl -Filter *.apk -Recurse | Select-Object -First 1
+          $nrn = Get-ChildItem inputs/nrn -Filter *.apk -Recurse | Select-Object -First 1
+          if ((Get-FileHash $bsl.FullName -Algorithm SHA256).Hash -ne 'DC7B61BF2D1F775E8BDF4986AB32BE1F01144A81354BD933581825F05F7B6318') { throw 'BSL checksum mismatch' }
+          if ((Get-FileHash $nrn.FullName -Algorithm SHA256).Hash -ne 'B078653DC278A0C50B9633E4F55E7B04E57EFDF99888957295CEECEC38E16054') { throw 'NRN checksum mismatch' }
+          Copy-Item $bsl.FullName package/apks/BSL-1.0.0-Desktop.apk
+          Copy-Item $nrn.FullName package/apks/NRN-Mesh-Pilot-1.3.0-Desktop.apk
+      - name: Run command and configuration tests
+        shell: pwsh
+        run: |
+          $p = Start-Process package/NoriaDesktop.exe -ArgumentList '--self-test' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Self-test failed: $($p.ExitCode)" }
+      - name: Windows UI smoke test and screenshot
+        shell: pwsh
+        run: |
+          $p = Start-Process package/NoriaDesktop.exe -PassThru
+          Start-Sleep -Seconds 5
+          $p.Refresh()
+          if ($p.HasExited -or $p.MainWindowHandle -eq 0) { throw 'Application window did not open' }
+          Add-Type -AssemblyName System.Drawing
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public class Capture {
+            [StructLayout(LayoutKind.Sequential)] public struct RECT {public int L,T,R,B;}
+            [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out RECT r);
+            [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h,IntPtr dc,uint flags);
+          }
+          '@
+          $r = [Capture+RECT]::new()
+          [Capture]::GetWindowRect($p.MainWindowHandle,[ref]$r)
+          $bmp = [System.Drawing.Bitmap]::new($r.R-$r.L,$r.B-$r.T)
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $dc = $g.GetHdc()
+          [Capture]::PrintWindow($p.MainWindowHandle,$dc,2)
+          $g.ReleaseHdc($dc)
+          $bmp.Save("$pwd/NoriaDesktop-preview.png")
+          $g.Dispose(); $bmp.Dispose()
+          Stop-Process -Id $p.Id
+      - name: Upload application
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoriaDesktop-Windows-x64
+          path: package/
+          retention-days: 30
+      - name: Upload UI preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoriaDesktop-preview
+          path: NoriaDesktop-preview.png
