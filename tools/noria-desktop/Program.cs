@@ -38,7 +38,7 @@ sealed class MainWindow : Form
         var side=new FlowLayoutPanel { Dock=DockStyle.Fill, FlowDirection=FlowDirection.TopDown, WrapContents=false, Padding=new Padding(8), AutoScroll=true };
         shell.Controls.Add(side,0,0);
         var logo=new PictureBox { Size=new Size(205,180), SizeMode=PictureBoxSizeMode.Zoom };
-        using(var s=typeof(Program).Assembly.GetManifestResourceStream("NoriaDesktop.noria-logo.png")) if(s!=null) logo.Image=new Bitmap(s);
+        using(var s=typeof(Program).Assembly.GetManifestResourceStream("NoriaDesktop.noria-logo.png")) if(s!=null) { using var original=new Bitmap(s); logo.Image=new Bitmap(original); }
         side.Controls.Add(logo);
         side.Controls.Add(new Label { Text="NORIA DESKTOP", Font=new Font("Segoe UI",17,FontStyle.Bold), ForeColor=cyan, AutoSize=true, Margin=new Padding(0,10,0,15) });
         Add(side,"1. Pripremi Android",()=>engine.SetupAsync());
@@ -253,6 +253,10 @@ sealed class Engine
             var e=new Engine(_=>{}); var info=e.Info("C:\\tools with spaces\\sdkmanager.bat",new[]{Image});
             if(!info.Arguments.Contains("\""+Image+"\"")||info.Environment["ANDROID_AVD_HOME"]!=e.Avds)return 4;
             if(!File.Exists(Path.Combine(e.Java,"bin","java.exe")))return 5;
+            var bat=Path.Combine(dir,"command with spaces.bat");
+            File.WriteAllText(bat,"@echo off\r\necho %~1\r\n\"%JAVA_HOME%\\bin\\java.exe\" -version\r\nexit /b %errorlevel%\r\n");
+            var result=e.Run(bat,new[]{Image},seconds:30,quiet:true).GetAwaiter().GetResult();
+            if(result.Code!=0||!result.Text.Contains(Image)||!result.Text.Contains("openjdk"))return 6;
             return 0;
         } finally { Directory.Delete(dir,true); }
     }
