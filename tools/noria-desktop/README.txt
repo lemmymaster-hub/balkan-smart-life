@@ -10,11 +10,11 @@ samo NoriaDesktop.exe, zatim zamijeni EXE novom verzijom u istom folderu.
 U naslovu nove aplikacije treba da piše 0.1.2. Zadrži runtime i apks foldere
 i sve podatke u %LOCALAPPDATA%\NoriaDesktop.
 
-NADOGRADNJA SA 0.1
+NADOGRADNJA SA 0.1 I 0.1.1
 Zatvori prethodni NoriaDesktop.exe i zamijeni ga EXE fajlom iz update ZIP-a
 u ISTOM raspakovanom programskom folderu. Zadrži runtime i apks foldere.
 Ne briši %LOCALAPPDATA%\NoriaDesktop: preuzeti Android i podaci ostaju tu.
-Ponovo pokreni program: u naslovu treba da piše 0.1.1.
+Ponovo pokreni program: u naslovu treba da piše 0.1.2.
 Ako je priprema već završena, odmah odaberi Pokreni Android.
 Nova verzija ispravlja čekanje komandnih procesa sa pozadinskim serverom,
 provjerava prisutnost emulatora prije ADB upita i bilježi tačnu komandu kod
