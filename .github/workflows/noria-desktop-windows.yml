@@ -69,6 +69,20 @@ jobs:
         run: |
           $p = Start-Process package/NoriaDesktop.exe -ArgumentList '--self-test' -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "Self-test failed: $($p.ExitCode)" }
+      - name: Test real isolated ADB server on Windows
+        shell: pwsh
+        run: |
+          $root = "$env:LOCALAPPDATA/NoriaDesktop"
+          New-Item "$root/sdk" -ItemType Directory -Force
+          Invoke-WebRequest 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip' -OutFile "$env:RUNNER_TEMP/platform-tools.zip"
+          Expand-Archive "$env:RUNNER_TEMP/platform-tools.zip" "$root/sdk" -Force
+          $p = Start-Process package/NoriaDesktop.exe -ArgumentList '--adb-self-test' -PassThru
+          if (-not $p.WaitForExit(45000)) { Stop-Process -Id $p.Id; throw 'ADB integration test exceeded 45 seconds' }
+          Get-Content "$root/noria-desktop.log"
+          if ($p.ExitCode -ne 0) {
+            Get-Content "$root/adb-self-test-error.txt" -ErrorAction SilentlyContinue
+            throw "ADB integration test failed: $($p.ExitCode)"
+          }
       - name: Windows UI smoke test and screenshot
         shell: pwsh
         run: |
@@ -105,7 +119,7 @@ jobs:
       - name: Upload small update
         uses: actions/upload-artifact@v4
         with:
-          name: NoriaDesktop-0.1.1-update
+          name: NoriaDesktop-0.1.2-update
           path: update/
           retention-days: 30
       - name: Upload application

@@ -13,6 +13,7 @@ static class Program
     [STAThread] static int Main(string[] args)
     {
         if (args.Contains("--self-test")) return Engine.SelfTest();
+        if (args.Contains("--adb-self-test")) return Engine.AdbSelfTest();
         ApplicationConfiguration.Initialize();
         Application.Run(new MainWindow());
         return 0;
@@ -30,7 +31,7 @@ sealed class MainWindow : Form
     bool busy;
     public MainWindow()
     {
-        Text="Noria Desktop 0.1.1 • Android radni prostor"; Size=new Size(1160,800); MinimumSize=new Size(980,700); StartPosition=FormStartPosition.CenterScreen;
+        Text="Noria Desktop 0.1.2 • Android radni prostor"; Size=new Size(1160,800); MinimumSize=new Size(980,700); StartPosition=FormStartPosition.CenterScreen;
         BackColor=navy; ForeColor=Color.White; Font=new Font("Segoe UI",10); AutoScaleMode=AutoScaleMode.Dpi;
         engine=new Engine(WriteLog);
         try { Icon=System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
@@ -70,8 +71,8 @@ sealed class MainWindow : Form
         main.Controls.Add(new Label { Text="Android 15 • 1920 × 1080 • 4 GB RAM • 2 CPU | NRN radio-veze zahtijevaju zasebno testiranje", Dock=DockStyle.Fill, ForeColor=Color.FromArgb(166,196,213), Padding=new Padding(0,10,0,0) },0,6);
         WriteLog("Dobro došao. Redom odaberi pripremu, pokretanje i instalaciju aplikacija.");
         WriteLog("Ako ubrzanje nije dostupno: Windows funkcije → Windows Hypervisor Platform → restart računara.");
-        WriteLog("Verzija 0.1.1 • detaljni dnevnik: "+Path.Combine(engine.Root,"noria-desktop.log"));
-        FormClosing+=(s,e)=>{ if(busy) { e.Cancel=true; MessageBox.Show(this,"Sačekaj završetak trenutne operacije.","Noria Desktop"); } };
+        WriteLog("Verzija 0.1.2 • detaljni dnevnik: "+Path.Combine(engine.Root,"noria-desktop.log"));
+        FormClosed+=(_,_)=>engine.ReleaseServer();
     }
     void Add(Control parent,string title,Func<Task> action,int width=215)
     {
@@ -107,6 +108,9 @@ sealed class Engine
     string Emulator=>Path.Combine(Sdk,"emulator","emulator.exe");
     string Java=>Path.Combine(AppContext.BaseDirectory,"runtime","java");
     string Manager=>Path.Combine(Sdk,"cmdline-tools","latest","bin","sdkmanager.bat");
+    const int AdbPort=5039;
+    Process? adbServer;
+    readonly CancellationTokenSource lifetime=new();
     const string Image="system-images;android-35;google_apis;x86_64", Serial="emulator-5580", Avd="NoriaDesktop";
     public Engine(Action<string> logger)
     {
@@ -118,6 +122,11 @@ sealed class Engine
         p.Environment["ANDROID_HOME"]=Sdk; p.Environment["ANDROID_SDK_ROOT"]=Sdk;
         p.Environment["ANDROID_AVD_HOME"]=Avds; p.Environment["ANDROID_USER_HOME"]=Path.Combine(Root,"android-user");
         p.Environment["JAVA_HOME"]=Java; p.Environment["PATH"]=Path.Combine(Java,"bin")+Path.PathSeparator+Environment.GetEnvironmentVariable("PATH");
+        // Keep Noria separate from a stalled/default Android Studio/phone server.
+        p.Environment.Remove("ADB_SERVER_SOCKET");
+        p.Environment["ANDROID_ADB_SERVER_PORT"]=AdbPort.ToString();
+        p.Environment["ADB_LIBUSB"]="0";
+        p.Environment["ADB_MDNS_AUTO_CONNECT"]="";
     }
     static string Quote(string value)
     {
@@ -132,12 +141,20 @@ sealed class Engine
             p.FileName=Environment.GetEnvironmentVariable("COMSPEC")??"cmd.exe";
             p.Arguments="/d /s /c \""+Quote(file)+" "+string.Join(" ",args.Select(Quote))+"\"";
         }
-        else foreach(var a in args)p.ArgumentList.Add(a);
+        else
+        {
+            var values=args.ToArray();
+            if(Path.GetFileName(file).Equals("adb.exe",StringComparison.OrdinalIgnoreCase)&&!values.Contains("-L"))
+            { p.ArgumentList.Add("-P"); p.ArgumentList.Add(AdbPort.ToString()); }
+            foreach(var a in values)p.ArgumentList.Add(a);
+        }
         EnvironmentFor(p); return p;
     }
     async Task<(int Code,string Text)> Run(string file,IEnumerable<string> args,string? input=null,int seconds=1800,bool quiet=false)
     {
-        var arguments=args.ToArray(); var label=Path.GetFileName(file)+" "+string.Join(" ",arguments);
+        var arguments=args.ToArray();
+        if(Path.GetFileName(file).Equals("adb.exe",StringComparison.OrdinalIgnoreCase)&&seconds==1800) seconds=arguments.Contains("install")?300:20;
+        var label=Path.GetFileName(file)+" "+string.Join(" ",arguments);
         if(!quiet)log("Pokrećem: "+label);
         var p=Info(file,arguments); p.RedirectStandardOutput=true; p.RedirectStandardError=true; p.RedirectStandardInput=true;
         using var process=new Process { StartInfo=p }; var text=new StringBuilder(); var sync=new object();
@@ -149,7 +166,12 @@ sealed class Engine
         if(input!=null)await process.StandardInput.WriteAsync(input); process.StandardInput.Close();
         // Wait for the command, not EOF on pipes inherited by a background server.
         // WaitForExitAsync and parameterless WaitForExit can wait for that server too.
-        bool exited=await Task.Run(()=>process.WaitForExit(checked(seconds*1000)));
+        bool exited=await Task.Run(()=>{
+            var watch=Stopwatch.StartNew();
+            while(!lifetime.IsCancellationRequested&&watch.Elapsed.TotalSeconds<seconds)
+                if(process.WaitForExit(100))return true;
+            return process.HasExited;
+        });
         if(!exited) { try{process.Kill(true);}catch{} }
         await Task.WhenAny(Task.WhenAll(stdoutDone.Task,stderrDone.Task),Task.Delay(1000));
         try{process.CancelOutputRead();}catch(InvalidOperationException){}
@@ -159,6 +181,56 @@ sealed class Engine
         if(!quiet)log("Završeno: "+Path.GetFileName(file)+" (kod "+process.ExitCode+")");
         return(process.ExitCode,output);
     }
+    static async Task<string?> ServerVersionAsync(int port,CancellationToken token=default)
+    {
+        using var timeout=CancellationTokenSource.CreateLinkedTokenSource(token); timeout.CancelAfter(700);
+        try
+        {
+            using var client=new TcpClient(); await client.ConnectAsync("127.0.0.1",port,timeout.Token);
+            await using var stream=client.GetStream();
+            await stream.WriteAsync(Encoding.ASCII.GetBytes("000chost:version"),timeout.Token);
+            var status=new byte[4]; await stream.ReadExactlyAsync(status,timeout.Token);
+            if(Encoding.ASCII.GetString(status)!="OKAY")return null;
+            await stream.ReadExactlyAsync(status,timeout.Token);
+            if(!int.TryParse(Encoding.ASCII.GetString(status),System.Globalization.NumberStyles.HexNumber,null,out var count)||count<1||count>64)return null;
+            var version=new byte[count]; await stream.ReadExactlyAsync(version,timeout.Token);
+            return Encoding.ASCII.GetString(version);
+        }
+        catch(Exception ex) when(ex is SocketException or IOException or OperationCanceledException) { return null; }
+    }
+    async Task EnsureAdbServerAsync()
+    {
+        if(!File.Exists(Adb))throw new FileNotFoundException("ADB nedostaje. Odaberi Pripremi Android.");
+        if(await ServerVersionAsync(AdbPort,lifetime.Token)!=null)return;
+        log("Pokrećem odvojeni Noria ADB server na 127.0.0.1:"+AdbPort+" (najviše 20 sekundi)…");
+        var p=Info(Adb,new[]{"-L","tcp:127.0.0.1:"+AdbPort,"server","nodaemon"});
+        p.RedirectStandardOutput=true; p.RedirectStandardError=true;
+        var server=new Process { StartInfo=p };
+        server.OutputDataReceived+=(_,e)=>{if(e.Data!=null)log("ADB: "+e.Data);};
+        server.ErrorDataReceived+=(_,e)=>{if(e.Data!=null)log("ADB: "+e.Data);};
+        adbServer=server;
+        try
+        {
+            server.Start(); server.BeginOutputReadLine(); server.BeginErrorReadLine();
+            var watch=Stopwatch.StartNew();
+            while(watch.Elapsed.TotalSeconds<20&&!lifetime.IsCancellationRequested)
+            {
+                if(server.HasExited)throw new InvalidOperationException("Noria ADB server se zatvorio (kod "+server.ExitCode+"). Pogledaj ADB redove u dnevniku.");
+                var version=await ServerVersionAsync(AdbPort,lifetime.Token);
+                if(version!=null) { log("Noria ADB je spreman (protokol "+version+", port "+AdbPort+")."); return; }
+                await Task.Delay(200,lifetime.Token);
+            }
+            throw new TimeoutException("Noria ADB nije odgovorio u roku od 20 sekundi. Provjeri ADB redove u dnevniku. Standardni ADB server na portu 5037 nije mijenjan.");
+        }
+        catch { StopOwnedServer(); throw; }
+    }
+    void StopOwnedServer()
+    {
+        var server=adbServer; adbServer=null; if(server==null)return;
+        try { if(!server.HasExited)server.Kill(true); } catch { }
+        server.Dispose();
+    }
+    public void ReleaseServer() { lifetime.Cancel(); StopOwnedServer(); }
     async Task Must(string file,IEnumerable<string> args,string? input=null)
     { var r=await Run(file,args,input); if(r.Code!=0)throw new InvalidOperationException("Operacija nije uspjela. Detalji su u dnevniku.\n"+Tail(r.Text)); }
     static string Tail(string s)=>s.Length>1800?s[^1800..]:s;
@@ -215,6 +287,7 @@ sealed class Engine
             catch(SocketException) { return false; }
             catch(TimeoutException) { return false; }
         }
+        await EnsureAdbServerAsync();
         var state=await Run(Adb,new[]{"-s",Serial,"get-state"},seconds:15,quiet:true);
         if(state.Code!=0)return false;
         var name=await Run(Adb,new[]{"-s",Serial,"emu","avd","name"},seconds:15,quiet:true);
@@ -229,8 +302,7 @@ sealed class Engine
         log("Provjera Windows ubrzanja…");
         var accel=await Run(Emulator,new[]{"-accel-check"},seconds:30);
         if(accel.Code!=0)throw new InvalidOperationException("Windows ubrzanje nije dostupno. Otvori Windows funkcije, uključi Windows Hypervisor Platform i restartuj PC.\n"+Tail(accel.Text));
-        log("Pokretanje Android Debug Bridge servera…");
-        await Must(Adb,new[]{"start-server"});
+        await EnsureAdbServerAsync();
         var p=Info(Emulator,new[]{"-avd",Avd,"-port","5580","-memory","4096","-cores","2","-gpu",software?"swiftshader_indirect":"auto","-no-boot-anim","-no-snapshot"});
         using var process=Process.Start(p)!;
         log("Čekam pokretanje Android sistema…");
@@ -268,7 +340,23 @@ sealed class Engine
         log("Slobodan prostor: "+new DriveInfo(Path.GetPathRoot(Root)!).AvailableFreeSpace/1024/1024/1024+" GB");
         if(File.Exists(Emulator)) { try { await Run(Emulator,new[]{"-accel-check"},seconds:45); } catch(Exception ex) { log("Provjera ubrzanja: "+ex.Message); } }
         else log("Android emulator još nije preuzet.");
-        if(File.Exists(Adb)) { try { await Run(Adb,new[]{"devices","-l"},seconds:45); } catch(Exception ex) { log("Provjera ADB: "+ex.Message); } }
+        if(File.Exists(Adb)) { try { await EnsureAdbServerAsync(); await Run(Adb,new[]{"devices","-l"},seconds:15); } catch(Exception ex) { log("Provjera ADB: "+ex.Message); } }
+    }
+    public static int AdbSelfTest()
+    {
+        var e=new Engine(line=>Console.WriteLine(line));
+        try
+        {
+            e.EnsureAdbServerAsync().GetAwaiter().GetResult();
+            var r=e.Run(e.Adb,new[]{"devices","-l"},seconds:10).GetAwaiter().GetResult();
+            if(r.Code!=0||!r.Text.Contains("List of devices attached"))return 10;
+            // Reuse is fast and does not start an extra server.
+            var watch=Stopwatch.StartNew(); e.EnsureAdbServerAsync().GetAwaiter().GetResult();
+            if(watch.Elapsed.TotalSeconds>2)return 11;
+            return 0;
+        }
+        catch(Exception ex) { File.WriteAllText(Path.Combine(e.Root,"adb-self-test-error.txt"),ex.ToString()); return 12; }
+        finally { e.ReleaseServer(); }
     }
     public static int SelfTest()
     {

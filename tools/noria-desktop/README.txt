@@ -1,4 +1,14 @@
-NORIA DESKTOP 0.1.1 — Windows 10/11 x64
+NORIA DESKTOP 0.1.2 — Windows 10/11 x64
+
+ISPRAVKA ADB POKRETANJA U 0.1.2
+Noria koristi odvojeni ADB server na lokalnom portu 5039, sa ograničenjem
+pokretanja od 20 sekundi. Ne čeka više dugotrajni adb start-server.
+Zatvaranje prozora je moguće i dok operacija traje. Zatvara se samo ADB
+server koji je pokrenula ova instanca Norije, ne serveri drugih programa.
+Ako stara verzija 0.1.1 ne dozvoljava zatvaranje: u Task Manageru završi
+samo NoriaDesktop.exe, zatim zamijeni EXE novom verzijom u istom folderu.
+U naslovu nove aplikacije treba da piše 0.1.2. Zadrži runtime i apks foldere
+i sve podatke u %LOCALAPPDATA%\NoriaDesktop.
 
 NADOGRADNJA SA 0.1
 Zatvori prethodni NoriaDesktop.exe i zamijeni ga EXE fajlom iz update ZIP-a
