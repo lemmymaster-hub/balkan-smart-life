@@ -147,8 +147,9 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
 
     if (!mounted || draft == null) return;
 
-    await _controller.addCard(draft);
-    if (!mounted) return;
+    if (!await _saveDemoChange(() => _controller.addCard(draft)) || !mounted) {
+      return;
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -224,7 +225,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
     if (!mounted || action == null) return;
 
     if (action == _CardAction.setDefault) {
-      await _controller.setDefaultCard(card.id);
+      await _saveDemoChange(() => _controller.setDefaultCard(card.id));
       return;
     }
 
@@ -250,7 +251,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
     );
 
     if (!mounted || confirmed != true) return;
-    await _controller.removeCard(card.id);
+    await _saveDemoChange(() => _controller.removeCard(card.id));
   }
 
   Future<void> _startServicePayment(WalletService service) async {
@@ -418,7 +419,21 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
     );
 
     if (!mounted || confirmed != true) return;
-    await _controller.resetDemo();
+    await _saveDemoChange(_controller.resetDemo);
+  }
+
+  Future<bool> _saveDemoChange(Future<void> Function() save) async {
+    try {
+      await save();
+      return true;
+    } on WalletDemoException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+      return false;
+    }
   }
 
   WalletDemoPaymentRequest _requestForService(WalletService service) {

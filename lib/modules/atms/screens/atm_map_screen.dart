@@ -51,6 +51,7 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
   String? _errorMessage;
   bool _isLoading = true;
   bool _initialLoadStarted = false;
+  int _areaRevision = 0;
   double _speedKmh = 0;
   ImageDescriptor? _navigationVehicleMarker;
   bool _navigationVehicleMarkerLoadRequested = false;
@@ -104,8 +105,8 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         await next.refresh();
-        if (!mounted) return;
-        await _loadInitialArea();
+        if (!mounted || _areaRevision != 0) return;
+        await _loadInitialArea(++_areaRevision);
       });
     }
   }
@@ -157,7 +158,7 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
         BslCities.findMentionedIn(location.displayLabel);
   }
 
-  Future<void> _loadInitialArea() async {
+  Future<void> _loadInitialArea(int revision) async {
     final location = _locationContext?.location;
     if (location != null) {
       final detected = _cityFromLocation(location);
@@ -166,6 +167,7 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
           ? location.city
           : _activeCity.name;
       await _loadAtms(
+        revision: revision,
         latitude: location.latitude,
         longitude: location.longitude,
         cityHint: location.city.isNotEmpty ? location.city : _activeCity.name,
@@ -175,6 +177,7 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
     }
 
     await _loadAtms(
+      revision: revision,
       latitude: _activeCity.latitude,
       longitude: _activeCity.longitude,
       cityHint: _activeCity.name,
@@ -183,20 +186,20 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
   }
 
   Future<void> _loadAtms({
+    required int revision,
     required double latitude,
     required double longitude,
     required String cityHint,
     required bool moveCamera,
   }) async {
-    if (mounted) {
-      setState(() {
+    if (!mounted || revision != _areaRevision) return;
+    setState(() {
         _isLoading = true;
         _errorMessage = null;
         _selectedAtm = null;
         _selectedBank = null;
         _bankSearchController.clear();
-      });
-    }
+    });
 
     try {
       final atms = await _atmService.loadNearby(
@@ -205,7 +208,7 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
         radiusKilometers: 10,
         cityHint: cityHint,
       );
-      if (!mounted) return;
+      if (!mounted || revision != _areaRevision) return;
       setState(() {
         _atms = atms;
         _isLoading = false;
@@ -220,7 +223,7 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
         );
       }
     } on AtmServiceException catch (error) {
-      if (!mounted) return;
+      if (!mounted || revision != _areaRevision) return;
       setState(() {
         _isLoading = false;
         _errorMessage = error.message;
@@ -285,18 +288,21 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
   Future<void> _searchCity(String raw) async {
     final value = raw.trim();
     if (value.length < 2 || _navigation.shouldShowPanel) return;
+    final revision = ++_areaRevision;
+    setState(() => _isLoading = false);
 
     final known = BslCities.findExact(value);
     if (known != null) {
       _activeCity = known;
       _citySearchController.text = known.name;
+      _citySearchFocus.unfocus();
       await _loadAtms(
+        revision: revision,
         latitude: known.latitude,
         longitude: known.longitude,
         cityHint: known.name,
         moveCamera: true,
       );
-      _citySearchFocus.unfocus();
       return;
     }
 
@@ -304,22 +310,25 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
       final matches = await geo.locationFromAddress(
         '$value, Bosnia and Herzegovina',
       );
-      if (!mounted) return;
+      if (!mounted || revision != _areaRevision) return;
       if (matches.isEmpty) {
         _showMessage('Grad "$value" nije pronađen u BiH.');
         return;
       }
       final target = matches.first;
       _citySearchController.text = value;
+      _citySearchFocus.unfocus();
       await _loadAtms(
+        revision: revision,
         latitude: target.latitude,
         longitude: target.longitude,
         cityHint: value,
         moveCamera: true,
       );
-      _citySearchFocus.unfocus();
     } catch (_) {
-      if (mounted) _showMessage('Pretraga grada trenutno nije dostupna.');
+      if (mounted && revision == _areaRevision) {
+        _showMessage('Pretraga grada trenutno nije dostupna.');
+      }
     }
   }
 
@@ -500,16 +509,19 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
 
     final ctx = _locationContext;
     if (ctx == null) return;
+    final revision = ++_areaRevision;
+    setState(() => _isLoading = false);
     if (ctx.location == null) await ctx.refresh();
-    if (!mounted) return;
+    if (!mounted || revision != _areaRevision) return;
     final location = ctx.location;
     if (location == null) {
       if (ctx.shouldOpenSettings) await ctx.openRelevantSettings();
-      if (mounted) _showMessage(ctx.statusMessage);
+      if (mounted && revision == _areaRevision) _showMessage(ctx.statusMessage);
       return;
     }
 
     await _loadAtms(
+      revision: revision,
       latitude: location.latitude,
       longitude: location.longitude,
       cityHint: location.city,
@@ -780,14 +792,18 @@ class _AtmMapScreenState extends State<AtmMapScreen> {
                 loading: true,
               ),
             ),
-          if (_errorMessage != null && !_isLoading)
+          if (!_isLoading && (_errorMessage != null || _atms.isEmpty))
             Positioned(
               top: MediaQuery.paddingOf(context).top + 198,
               left: 18,
               right: 104,
               child: _StatusPill(
-                icon: Icons.error_outline_rounded,
-                text: _errorMessage!,
+                icon: _errorMessage == null
+                    ? Icons.info_outline_rounded
+                    : Icons.error_outline_rounded,
+                text:
+                    _errorMessage ??
+                    'Nema evidentiranih bankomata u krugu 10 km.',
               ),
             ),
           if (_availableBanks.isNotEmpty && !_navigation.shouldShowPanel)

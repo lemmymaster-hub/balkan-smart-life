@@ -47,10 +47,11 @@ class SharedPreferencesWalletDemoStore implements WalletDemoStore {
     required WalletDemoSnapshot snapshot,
   }) async {
     final preferences = await _preferencesLoader();
-    await preferences.setString(
+    final saved = await preferences.setString(
       _storageKey(userId),
       jsonEncode(snapshot.toMap()),
     );
+    if (!saved) throw StateError('Demo novčanik nije upisan.');
   }
 
   @override

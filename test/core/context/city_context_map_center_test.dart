@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:bsl_app/core/context/city_context.dart';
 import 'package:bsl_app/core/models/address_search_result.dart';
 import 'package:bsl_app/core/models/bsl_administrative_area.dart';
@@ -23,12 +25,45 @@ class _FakeAddressGeocodingService extends AddressGeocodingService {
   }
 }
 
+class _PendingAddressGeocodingService extends AddressGeocodingService {
+  final pending = Completer<AddressSearchResult?>();
+  final requested = Completer<void>();
+
+  @override
+  Future<AddressSearchResult?> searchAddress({
+    required String input,
+    String? city,
+    String country = 'Bosnia and Herzegovina',
+  }) {
+    requested.complete();
+    return pending.future;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('CityContext map centering', () {
     setUp(() {
       SharedPreferences.setMockInitialValues(<String, Object>{});
+    });
+
+    test('posljednji izbor pobjeđuje i poslije ponovnog pokretanja', () async {
+      final geocoding = _PendingAddressGeocodingService();
+      final context = CityContext(addressService: geocoding);
+      addTearDown(context.dispose);
+      final older = context.setCity('Teslić');
+      await geocoding.requested.future;
+
+      await context.setCity('Sarajevo');
+      geocoding.pending.complete(null);
+      await older;
+
+      final restored = CityContext();
+      addTearDown(restored.dispose);
+      await restored.load();
+      expect(context.selectedCity, 'Sarajevo');
+      expect(restored.selectedCity, 'Sarajevo');
     });
 
     test('izabrana opština dobija razriješene koordinate prije aktivacije', () async {

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'login_screen.dart';
 import '../services/auth_service.dart';
 import '../widgets/animated_logo.dart';
 
@@ -50,15 +49,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _register() async {
+    if (isLoading) return;
+    final name = nameController.text.trim();
     setState(() {
       isLoading = true;
     });
 
     try {
-      await AuthService().register(
+      final credential = await AuthService().register(
         email: emailController.text,
         password: passwordController.text,
       );
+      if (name.isNotEmpty) {
+        try {
+          await credential.user?.updateDisplayName(name);
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Nalog je kreiran. Ime profila nije sačuvano.'),
+              ),
+            );
+          }
+        }
+      }
+      if (!mounted) return;
+      Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
 
@@ -88,8 +104,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   height: 120,
                   repeatDelay: Duration(seconds: 30),
                 ),
-
-                const SizedBox(height: 20),
 
                 const SizedBox(height: 20),
 
@@ -212,21 +226,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 16),
 
                 TextButton(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    );
-                  },
+                  onPressed: isLoading ? null : () => Navigator.pop(context),
                   child: const Text('Već imam nalog'),
                 ),
 
-                const SizedBox(height: 22),
-
-                const Text(
-                  'BSL v0.1 Alpha',
-                  style: TextStyle(color: Colors.white38, fontSize: 12),
-                ),
               ],
             ),
           ),

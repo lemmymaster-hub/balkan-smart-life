@@ -139,7 +139,7 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
       debugPrintStack(stackTrace: stackTrace);
     }
 
-    if (userId == 'guest') return;
+    if (!mounted || userId == 'guest') return;
 
     _liveChargingSessionSubscription = _liveChargingSessionService
         .watchForUser(userId)
@@ -1060,7 +1060,11 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
     if (!session.isEstimated) return;
 
     if (!session.isActive) {
-      await _chargingSession.dismissEstimated();
+      try {
+        await _chargingSession.dismissEstimated();
+      } on EvChargingSessionException catch (error) {
+        if (mounted) _showMessage(error.message);
+      }
       return;
     }
 
@@ -1089,7 +1093,11 @@ class _EvChargersMapScreenState extends State<EvChargersMapScreen> {
     );
 
     if (!mounted || confirmed != true) return;
-    await _chargingSession.completeEstimated();
+    try {
+      await _chargingSession.completeEstimated();
+    } on EvChargingSessionException catch (error) {
+      if (mounted) _showMessage(error.message);
+    }
   }
 
   Future<void> _startChargerNavigation(EvCharger charger) async {

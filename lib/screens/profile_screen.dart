@@ -7,6 +7,7 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
+    final displayName = user?.displayName?.trim();
 
     return Scaffold(
       backgroundColor: const Color(0xFF070B18),
@@ -15,7 +16,7 @@ class ProfileScreen extends StatelessWidget {
         elevation: 0,
         title: const Text('BSL profil'),
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(18),
         child: Column(
           children: [
@@ -29,6 +30,10 @@ class ProfileScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
+            if (displayName != null && displayName.isNotEmpty) ...[
+              Text(displayName, style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 4),
+            ],
             Text(
               user?.email ?? 'Nepoznat korisnik',
               style: const TextStyle(

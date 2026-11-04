@@ -26,6 +26,7 @@ class TransitController extends ChangeNotifier {
   DateTime? timetableReceivedAt;
   String? routeError;
   String? arrivalError;
+  bool _fleetFailed = false;
   String? timetableError;
   bool loading = false;
   bool refreshing = false;
@@ -43,7 +44,8 @@ class TransitController extends ChangeNotifier {
   bool _recent(DateTime? time) =>
       time != null && now().difference(time) < const Duration(seconds: 20);
   bool get fresh => arrivalError == null && _recent(receivedAt);
-  bool get fleetFresh => arrivalError == null && _recent(fleetReceivedAt);
+  bool get fleetVisible => _recent(fleetReceivedAt);
+  bool get fleetFresh => !_fleetFailed && fleetVisible;
   bool get nextFresh => fleetFresh && _recent(nextReceivedAt);
 
   List<TransitArrival> _filter(List<TransitArrival> rows) {
@@ -59,6 +61,7 @@ class TransitController extends ChangeNotifier {
 
   List<TransitArrival> get arrivals => fresh ? _filter(_arrivals) : const [];
   List<TransitArrival> get vehicles {
+    if (!fleetVisible) return const [];
     // A single GPS position may be attached to several future travel orders.
     // Do not stack multiple apparent vehicles at the exact same observation.
     final positions = <String, TransitArrival>{};
@@ -89,9 +92,10 @@ class TransitController extends ChangeNotifier {
 
   String get liveStatus {
     if (routeError != null) return routeError!;
-    if (arrivalError != null || (fleetReceivedAt != null && !fleetFresh)) {
+    if (_fleetFailed || (fleetReceivedAt != null && !fleetFresh)) {
       return 'Podaci se trenutno ne osvježavaju';
     }
+    if (arrivalError != null) return arrivalError!;
     if (loading || (refreshing && receivedAt == null)) return 'Učitavam…';
     return vehicles.isEmpty ? 'Trenutno nema podataka o vozilima' : '';
   }
@@ -153,6 +157,7 @@ class TransitController extends ChangeNotifier {
     timetableReceivedAt = null;
     routeError = null;
     arrivalError = null;
+    _fleetFailed = false;
     timetableError = null;
     refreshing = false;
     clearVehicle(emit: false);
@@ -225,7 +230,7 @@ class TransitController extends ChangeNotifier {
   }
 
   Future<void> selectVehicle(int tripId) async {
-    if (!vehicles.any((v) => v.tripId == tripId)) return;
+    if (!fleetFresh || !vehicles.any((v) => v.tripId == tripId)) return;
     selectedTripId = tripId;
     nextArrival = null;
     nextReceivedAt = null;
@@ -294,36 +299,41 @@ class TransitController extends ChangeNotifier {
     refreshing = true;
     _emit();
     bool current() => _current(token) && stopToken == _stopGeneration;
+    Future<List<TransitArrival>?> load(TransitStop target) async {
+      try {
+        return await gateway.arrivals(selectedLine, selectedDirection, target);
+      } catch (_) {
+        return null;
+      }
+    }
+
     try {
       // Destination-terminal predictions discover vehicles along the complete
       // selected direction, independently of the user's chosen boarding stop.
-      final fleetRequest = gateway.arrivals(
-        selectedLine,
-        selectedDirection,
-        terminal,
-      );
+      final fleetRequest = load(terminal);
       final stationRequest = selectedStop.id == terminal.id
           ? fleetRequest
-          : gateway.arrivals(selectedLine, selectedDirection, selectedStop);
+          : load(selectedStop);
       final results = await Future.wait([fleetRequest, stationRequest]);
       if (!current()) return;
-      _fleet = results[0];
-      _arrivals = results[1];
-      receivedAt = now();
-      fleetReceivedAt = receivedAt;
-      arrivalError = null;
+      final [fleet, station] = results;
+      final observedAt = now();
+      _fleetFailed = fleet == null;
+      arrivalError = station == null ? 'Dolasci trenutno nisu dostupni.' : null;
+      if (fleet != null) {
+        _fleet = fleet;
+        fleetReceivedAt = observedAt;
+      }
+      if (station != null) {
+        _arrivals = station;
+        receivedAt = observedAt;
+      }
       vehicleRevision++;
       if (selectedTripId != null && selectedVehicle == null) {
         clearVehicle(emit: false);
       }
       _emit();
       if (selectedTripId != null) await _refreshNextStop();
-    } catch (_) {
-      if (!current()) return;
-      arrivalError = 'Dolasci trenutno nisu dostupni.';
-      nextArrival = null;
-      nextReceivedAt = null;
-      vehicleRevision++;
     } finally {
       if (current()) {
         refreshing = false;

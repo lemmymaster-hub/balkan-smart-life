@@ -42,7 +42,7 @@ class AtmService {
     double radiusKilometers = defaultRadiusKilometers,
     String cityHint = '',
   }) async {
-    Object? supabaseError;
+    var primaryResponded = false;
 
     try {
       final atms = await _loadFromSupabase(
@@ -50,6 +50,7 @@ class AtmService {
         longitude: longitude,
         radiusKilometers: radiusKilometers,
       );
+      primaryResponded = true;
 
       if (atms.isNotEmpty) {
         await _writeCache(
@@ -60,8 +61,8 @@ class AtmService {
         );
         return atms;
       }
-    } catch (error) {
-      supabaseError = error;
+    } catch (_) {
+      // Continue with the cache and the public fallback.
     }
 
     // A recent BSL cache is preferred over a live public Overpass request.
@@ -73,7 +74,6 @@ class AtmService {
     );
     if (cached.isNotEmpty) return cached;
 
-    Object? overpassError;
     try {
       final osm = await _loadFromOverpass(
         latitude: latitude,
@@ -88,15 +88,14 @@ class AtmService {
           longitude: longitude,
           radiusKilometers: radiusKilometers,
         );
-        return osm;
       }
-    } catch (error) {
-      overpassError = error;
+      return osm;
+    } catch (_) {
+      if (primaryResponded) return const [];
     }
 
-    throw AtmServiceException(
-      'Mreža bankomata trenutno nije dostupna. Pokušaj ponovo. '
-      '(${supabaseError ?? overpassError ?? 'nema podataka'})',
+    throw const AtmServiceException(
+      'Mreža bankomata trenutno nije dostupna. Pokušaj ponovo.',
     );
   }
 
@@ -126,7 +125,7 @@ class AtmService {
       throw StateError('Supabase HTTP ${response.statusCode}');
     }
 
-    final decoded = jsonDecode(response.body);
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes));
     if (decoded is! List) {
       throw const FormatException('Supabase ATM odgovor nije lista.');
     }
@@ -224,8 +223,13 @@ out center tags;
           continue;
         }
 
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        if (decoded is! Map<String, dynamic> || decoded['elements'] is! List) {
+          lastError = 'Neispravan odgovor Overpass servisa';
+          continue;
+        }
         return parseOverpassPayload(
-          jsonDecode(response.body),
+          decoded,
           centerLatitude: latitude,
           centerLongitude: longitude,
           radiusKilometers: radiusKilometers,
@@ -260,12 +264,13 @@ out center tags;
           ? Map<String, dynamic>.from(rawTags)
           : const <String, dynamic>{};
 
+      final center = element['center'];
       final lat =
           _asDouble(element['lat']) ??
-          _asDouble((element['center'] as Map?)?['lat']);
+          _asDouble(center is Map ? center['lat'] : null);
       final lon =
           _asDouble(element['lon']) ??
-          _asDouble((element['center'] as Map?)?['lon']);
+          _asDouble(center is Map ? center['lon'] : null);
       if (lat == null || lon == null) continue;
 
       final distance = BslCities.distanceInKilometers(
@@ -463,8 +468,8 @@ out center tags;
   }
 
   static double? _asDouble(Object? value) {
-    if (value is num) return value.toDouble();
-    return double.tryParse(value?.toString() ?? '');
+    final number = value is num ? value.toDouble() : double.tryParse('$value');
+    return number != null && number.isFinite ? number : null;
   }
 
   static int? _asInt(Object? value) {

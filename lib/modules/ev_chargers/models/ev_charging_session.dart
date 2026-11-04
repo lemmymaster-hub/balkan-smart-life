@@ -209,8 +209,8 @@ class EvChargingSession {
   }
 
   static double? _number(Object? value) {
-    if (value is num) return value.toDouble();
-    return double.tryParse(value?.toString() ?? '');
+    final number = value is num ? value.toDouble() : double.tryParse('$value');
+    return number != null && number.isFinite ? number : null;
   }
 
   static double? _percent(Object? value) {
