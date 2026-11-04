@@ -25,6 +25,7 @@ class BslLocationContext extends ChangeNotifier {
   BslLocationResult? _location;
   Object? _error;
   bool _isLoading = false;
+  bool _disposed = false;
   Future<void>? _activeRequest;
   StreamSubscription<BslLocationResult>? _trackingSubscription;
 
@@ -89,6 +90,7 @@ class BslLocationContext extends ChangeNotifier {
   }
 
   Future<void> initialize({bool force = false}) {
+    if (_disposed) return Future<void>.value();
     final activeRequest = _activeRequest;
     if (activeRequest != null) return activeRequest;
 
@@ -138,6 +140,7 @@ class BslLocationContext extends ChangeNotifier {
     try {
       if (_location == null) {
         final cachedLocation = await _locationGateway.getLastKnownLocation();
+        if (_disposed) return;
 
         if (cachedLocation != null) {
           _location = cachedLocation;
@@ -147,6 +150,7 @@ class BslLocationContext extends ChangeNotifier {
       }
 
       final currentLocation = await _locationGateway.getCurrentLocation();
+      if (_disposed) return;
       _location = currentLocation;
       _status = BslLocationStatus.available;
       _error = null;
@@ -155,9 +159,15 @@ class BslLocationContext extends ChangeNotifier {
       final resolvedLocation = await _locationGateway.resolvePlace(
         currentLocation,
       );
-      _location = resolvedLocation;
+      if (_disposed) return;
+      _location = _location!.copyWith(
+        city: resolvedLocation.city,
+        municipality: resolvedLocation.municipality,
+        country: resolvedLocation.country,
+      );
       notifyListeners();
     } catch (error) {
+      if (_disposed) return;
       _error = error;
 
       if (_location != null) {
@@ -169,16 +179,15 @@ class BslLocationContext extends ChangeNotifier {
       debugPrint('BSL LOCATION ERROR: $error');
     } finally {
       _isLoading = false;
-      notifyListeners();
-
-      if (_status == BslLocationStatus.available) {
-        _startTracking();
+      if (!_disposed) {
+        notifyListeners();
+        if (_status == BslLocationStatus.available) _startTracking();
       }
     }
   }
 
   void _startTracking() {
-    if (_trackingSubscription != null) return;
+    if (_disposed || _trackingSubscription != null) return;
 
     late final StreamSubscription<BslLocationResult> subscription;
     subscription = _locationGateway.watchLocation().listen(
@@ -200,6 +209,7 @@ class BslLocationContext extends ChangeNotifier {
   }
 
   void _handleTrackedLocation(BslLocationResult nextLocation) {
+    if (_disposed) return;
     final previousLocation = _location;
 
     _location = nextLocation.copyWith(
@@ -219,6 +229,7 @@ class BslLocationContext extends ChangeNotifier {
   }
 
   void _handleTrackingError(Object error) {
+    if (_disposed) return;
     _error = error;
     _status = _location == null
         ? _statusFromError(error)
@@ -246,6 +257,7 @@ class BslLocationContext extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     final trackingSubscription = _trackingSubscription;
     _trackingSubscription = null;
 

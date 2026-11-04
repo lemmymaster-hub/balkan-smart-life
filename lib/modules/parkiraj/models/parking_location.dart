@@ -78,24 +78,47 @@ class ParkingLocation {
   }
 
   factory ParkingLocation.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc.data();
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException('Parking nema podatke.');
+    }
+    return ParkingLocation.fromMap(doc.id, data);
+  }
 
-    final totalSpots = (data['totalSpots'] as num?)?.toInt() ?? 0;
+  factory ParkingLocation.fromMap(String id, Map<String, dynamic> data) {
+    final lat = _number(data['lat']);
+    final lng = _number(data['lng']);
+    if (lat == null || lng == null || lat.abs() > 90 || lng.abs() > 180) {
+      throw const FormatException('Parking nema ispravne koordinate.');
+    }
+
+    final reportedTotal = _number(data['totalSpots'])?.toInt() ?? 0;
+    final totalSpots = reportedTotal < 0 ? 0 : reportedTotal;
+    final freeSpots = (_number(data['freeSpots']) ?? 0)
+        .clamp(0, totalSpots)
+        .toInt();
+    final price = _number(data['pricePerHour']) ?? 0;
+    final tags = data['parkingTags'];
 
     return ParkingLocation(
-      id: doc.id,
+      id: id,
       name: (data['name'] ?? 'Parking').toString(),
       city: (data['city'] ?? '').toString(),
       address: (data['address'] ?? '').toString(),
-      lat: (data['lat'] as num).toDouble(),
-      lng: (data['lng'] as num).toDouble(),
+      lat: lat,
+      lng: lng,
       totalSpots: totalSpots,
-      freeSpots: (data['freeSpots'] as num?)?.toInt() ?? totalSpots,
-      pricePerHour: (data['pricePerHour'] as num?)?.toDouble() ?? 0,
+      freeSpots: freeSpots,
+      pricePerHour: price < 0 ? 0 : price,
       workingHours: (data['workingHours'] ?? '').toString(),
-      parkingTags: List<String>.from(data['parkingTags'] ?? const []),
-      isActive: (data['isActive'] as bool?) ?? true,
+      parkingTags: tags is List ? tags.whereType<String>().toList() : const [],
+      isActive: data['isActive'] == null || data['isActive'] == true,
       note: (data['note'] ?? '').toString(),
     );
+  }
+
+  static double? _number(Object? value) {
+    final number = value is num ? value.toDouble() : double.tryParse('$value');
+    return number != null && number.isFinite ? number : null;
   }
 }

@@ -40,7 +40,7 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
   final _stopMarkers = <String, TransitStop>{};
   bool _loadingImages = false, _syncing = false, _pending = false;
   int _lastVehicleRevision = -1;
-  bool? _lastFresh, _lastActive;
+  bool? _lastFresh, _lastFleetVisible, _lastActive;
   TransitRoute? _lastRoute;
   String? _mapError;
 
@@ -122,6 +122,7 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
     }
     if (_lastVehicleRevision != _transit.vehicleRevision ||
         _lastFresh != _transit.fleetFresh ||
+        _lastFleetVisible != _transit.fleetVisible ||
         _lastActive != _transit.active ||
         routeChanged) {
       _syncVehicles();
@@ -131,6 +132,7 @@ class _PublicTransportScreenState extends State<PublicTransportScreen>
   void _syncVehicles() {
     _lastVehicleRevision = _transit.vehicleRevision;
     _lastFresh = _transit.fleetFresh;
+    _lastFleetVisible = _transit.fleetVisible;
     _lastActive = _transit.active;
     _vehicles.setImages(_atlases[_transit.line.isTram] ?? {});
     _vehicles.update(

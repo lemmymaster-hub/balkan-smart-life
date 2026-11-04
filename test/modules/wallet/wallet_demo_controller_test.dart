@@ -104,10 +104,28 @@ void main() {
       throwsA(isA<WalletDemoException>()),
     );
   });
+
+  test('neuspješan upis ne briše karticu i izmjena se može ponoviti', () async {
+    await controller.initialize(userId: 'investor-1');
+    final cardId = controller.cards.single.id;
+    store.failWrites = true;
+    await expectLater(
+      controller.removeCard(cardId),
+      throwsA(isA<WalletDemoException>()),
+    );
+    expect(controller.cards.single.id, cardId);
+    expect(store.snapshots['investor-1']!.cards.single.id, cardId);
+
+    store.failWrites = false;
+    await controller.removeCard(cardId);
+    expect(controller.cards, isEmpty);
+    expect(store.snapshots['investor-1']!.cards, isEmpty);
+  });
 }
 
 class _MemoryWalletDemoStore implements WalletDemoStore {
   final Map<String, WalletDemoSnapshot> snapshots = {};
+  bool failWrites = false;
 
   @override
   Future<void> clear({required String userId}) async {
@@ -124,6 +142,7 @@ class _MemoryWalletDemoStore implements WalletDemoStore {
     required String userId,
     required WalletDemoSnapshot snapshot,
   }) async {
+    if (failWrites) throw StateError('write failed');
     snapshots[userId] = snapshot;
   }
 }

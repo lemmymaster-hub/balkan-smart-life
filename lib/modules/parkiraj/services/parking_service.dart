@@ -14,12 +14,7 @@ class ParkingService {
       query = query.where('city', isEqualTo: city.trim());
     }
 
-    return query.snapshots().map((snapshot) {
-      return snapshot.docs
-          .map((doc) => ParkingLocation.fromFirestore(doc))
-          .where((parking) => parking.isActive)
-          .toList();
-    });
+    return query.snapshots().map(_activeParkings);
   }
 
   Future<List<ParkingLocation>> getActiveParkings({String? city}) async {
@@ -29,12 +24,22 @@ class ParkingService {
       query = query.where('city', isEqualTo: city.trim());
     }
 
-    final snapshot = await query.get();
+    return _activeParkings(await query.get());
+  }
 
-    return snapshot.docs
-        .map((doc) => ParkingLocation.fromFirestore(doc))
-        .where((parking) => parking.isActive)
-        .toList();
+  List<ParkingLocation> _activeParkings(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) {
+    final parkings = <ParkingLocation>[];
+    for (final doc in snapshot.docs) {
+      try {
+        final parking = ParkingLocation.fromFirestore(doc);
+        if (parking.isActive) parkings.add(parking);
+      } on FormatException {
+        // An invalid location must not hide the other parking records.
+      }
+    }
+    return parkings;
   }
 
   List<ParkingLocation> getFallbackParkings() {

@@ -7,6 +7,7 @@ import 'package:bsl_app/modules/public_transport/services/transit_service.dart';
 class FakeTransitGateway implements TransitGateway {
   bool fail = false;
   bool failTimetable = false;
+  int? failingStopId;
   int requests = 0;
   Completer<List<TransitArrival>>? pending;
   @override
@@ -29,7 +30,7 @@ class FakeTransitGateway implements TransitGateway {
     TransitStop stop,
   ) async {
     requests++;
-    if (fail) throw Exception('offline');
+    if (fail || stop.id == failingStopId) throw Exception('offline');
     if (pending != null) return pending!.future;
     return [
       TransitArrival(
@@ -76,7 +77,7 @@ void main() {
   );
 
   test(
-    'expires vehicle positions after 60 seconds and clears on network error',
+    'expires vehicle positions after 20 seconds and clears ETAs on error',
     () async {
       var now = DateTime.utc(2026, 10, 15, 20);
       final gateway = FakeTransitGateway();
@@ -84,13 +85,38 @@ void main() {
       addTearDown(c.dispose);
       await c.start();
       expect(c.arrivals, hasLength(1));
-      now = now.add(const Duration(seconds: 61));
+      now = now.add(const Duration(seconds: 20));
       expect(c.arrivals, isEmpty);
+      expect(c.vehicles, isEmpty);
       gateway.fail = true;
       await c.refreshArrivals();
       expect(c.arrivalError, isNotNull);
       expect(c.arrivals, isEmpty);
       expect(c.route, isNotNull);
+    },
+  );
+
+  test(
+    'fleet and station arrivals survive failures of the other request',
+    () async {
+      var now = DateTime.utc(2026, 10, 15, 20);
+      final gateway = FakeTransitGateway()..failingStopId = 1;
+      final controller = TransitController(gateway: gateway, now: () => now);
+      addTearDown(controller.dispose);
+
+      await controller.start();
+      expect(controller.arrivalError, isNotNull);
+      expect(controller.fleetFresh, isTrue);
+      expect(controller.vehicles, hasLength(1));
+
+      gateway.failingStopId = 2;
+      await controller.refreshArrivals();
+      expect(controller.arrivals, hasLength(1));
+      expect(controller.fleetFresh, isFalse);
+      expect(controller.vehicles, hasLength(1));
+
+      now = now.add(const Duration(seconds: 20));
+      expect(controller.vehicles, isEmpty);
     },
   );
 

@@ -7,6 +7,27 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('BslLocationContext', () {
+    test(
+      'završetak GPS zahtjeva poslije zatvaranja ne pokreće praćenje',
+      () async {
+        final currentLocation = Completer<BslLocationResult>();
+        final context = BslLocationContext(
+          locationGateway: _FakeLocationGateway(
+            currentLocation: () => currentLocation.future,
+          ),
+        );
+
+        final request = context.initialize();
+        await Future<void>.delayed(Duration.zero);
+        context.dispose();
+        currentLocation.complete(
+          _location(latitude: 43.82, longitude: 18.37, isFromCache: false),
+        );
+        await request;
+        expect(context.isTracking, isFalse);
+      },
+    );
+
     test('odmah objavljuje keširanu pa preciznu lokaciju', () async {
       final currentLocationCompleter = Completer<BslLocationResult>();
       final gateway = _FakeLocationGateway(

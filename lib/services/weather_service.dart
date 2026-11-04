@@ -52,7 +52,8 @@ class WeatherForecast {
   num? get currentTemperature {
     final current = data['current'];
     if (current is! Map<String, dynamic>) return null;
-    return current['temperature_2m'] as num?;
+    final temperature = current['temperature_2m'];
+    return temperature is num && temperature.isFinite ? temperature : null;
   }
 
   num? get currentWeatherCode {
@@ -74,6 +75,8 @@ class WeatherForecast {
 }
 
 class WeatherService {
+  static const _requestTimeout = Duration(seconds: 10);
+
   static Future<WeatherForecast> getWeatherForCity(
     String cityName, {
     String? preferredCountryCode = 'BA',
@@ -133,13 +136,13 @@ class WeatherService {
       'timezone': 'Europe/Sarajevo',
     });
 
-    final response = await http.get(url);
+    final response = await http.get(url).timeout(_requestTimeout);
 
     if (response.statusCode != 200) {
       throw Exception('Greška pri učitavanju vremenske prognoze');
     }
 
-    final decoded = jsonDecode(response.body);
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes));
 
     if (decoded is! Map<String, dynamic>) {
       throw const FormatException('Neispravan odgovor vremenskog servisa.');
@@ -172,13 +175,13 @@ class WeatherService {
       parameters,
     );
 
-    final response = await http.get(url);
+    final response = await http.get(url).timeout(_requestTimeout);
 
     if (response.statusCode != 200) {
       throw Exception('Greška pri pretrazi grada');
     }
 
-    final decoded = jsonDecode(response.body);
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes));
 
     if (decoded is! Map<String, dynamic>) {
       throw const FormatException('Neispravan odgovor pretrage gradova.');

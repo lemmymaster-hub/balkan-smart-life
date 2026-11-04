@@ -48,6 +48,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
+    if (isLoading) return;
     setState(() {
       isLoading = true;
     });
@@ -69,6 +70,38 @@ class _LoginScreenState extends State<LoginScreen> {
           isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    if (isLoading) return;
+    final email = emailController.text.trim();
+    final messenger = ScaffoldMessenger.of(context);
+    if (email.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Unesi email svog BSL naloga.')),
+      );
+      return;
+    }
+
+    setState(() => isLoading = true);
+    try {
+      await AuthService().resetPassword(email);
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Ako nalog postoji, upute za obnovu stižu na email.'),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Provjeri email i mrežnu vezu pa pokušaj ponovo.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -194,7 +227,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 14),
 
                 TextButton(
-                  onPressed: () {},
+                  onPressed: isLoading ? null : _resetPassword,
                   child: const Text('Zaboravljena lozinka?'),
                 ),
 
@@ -212,21 +245,19 @@ class _LoginScreenState extends State<LoginScreen> {
                       borderRadius: BorderRadius.circular(18),
                     ),
                   ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                    );
-                  },
+                  onPressed: isLoading
+                      ? null
+                      : () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const RegisterScreen(),
+                            ),
+                          );
+                        },
                   child: const Text('Registruj se'),
                 ),
 
-                const SizedBox(height: 30),
-
-                const Text(
-                  'BSL v0.1 Alpha',
-                  style: TextStyle(color: Colors.white38, fontSize: 12),
-                ),
               ],
             ),
           ),

@@ -23,6 +23,8 @@ class WalletDemoController extends ChangeNotifier {
   List<WalletDemoCard> _cards = const [];
   List<WalletDemoTransaction> _transactions = const [];
   bool _isInitialized = false;
+  bool _disposed = false;
+  Future<void> _pendingChange = Future<void>.value();
 
   List<WalletDemoCard> get cards => List.unmodifiable(_cards);
   List<WalletDemoTransaction> get transactions =>
@@ -39,22 +41,23 @@ class WalletDemoController extends ChangeNotifier {
   Future<void> initialize({required String userId}) async {
     _userId = userId.trim().isEmpty ? 'guest' : userId.trim();
     final stored = await _store.load(userId: _userId);
+    if (_disposed) return;
 
     if (stored == null) {
       final seed = _seedSnapshot(_now());
+      await _store.save(userId: _userId, snapshot: seed);
       _cards = seed.cards;
       _transactions = seed.transactions;
-      await _persist();
     } else {
       _cards = _normalizeDefaultCard(stored.cards);
       _transactions = _sortTransactions(stored.transactions);
     }
 
     _isInitialized = true;
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
-  Future<void> addCard(WalletDemoCardDraft draft) async {
+  Future<void> addCard(WalletDemoCardDraft draft) => _enqueue(() async {
     if (!RegExp(r'^\d{4}$').hasMatch(draft.last4) ||
         draft.expiryMonth < 1 ||
         draft.expiryMonth > 12 ||
@@ -76,20 +79,19 @@ class WalletDemoController extends ChangeNotifier {
       isDefault: _cards.isEmpty,
     );
 
-    _cards = [..._cards, card];
-    await _persistAndNotify();
-  }
+    await _save(cards: [..._cards, card]);
+  });
 
-  Future<void> setDefaultCard(String cardId) async {
+  Future<void> setDefaultCard(String cardId) => _enqueue(() async {
     if (!_cards.any((card) => card.id == cardId)) return;
 
-    _cards = _cards
+    final cards = _cards
         .map((card) => card.copyWith(isDefault: card.id == cardId))
         .toList(growable: false);
-    await _persistAndNotify();
-  }
+    await _save(cards: cards);
+  });
 
-  Future<void> removeCard(String cardId) async {
+  Future<void> removeCard(String cardId) => _enqueue(() async {
     final removedWasDefault = _cards.any(
       (card) => card.id == cardId && card.isDefault,
     );
@@ -97,14 +99,15 @@ class WalletDemoController extends ChangeNotifier {
         .where((card) => card.id != cardId)
         .toList(growable: false);
 
-    _cards = removedWasDefault ? _normalizeDefaultCard(remaining) : remaining;
-    await _persistAndNotify();
-  }
+    await _save(
+      cards: removedWasDefault ? _normalizeDefaultCard(remaining) : remaining,
+    );
+  });
 
   Future<WalletDemoTransaction> recordPayment({
     required WalletDemoPaymentRequest request,
     required String cardId,
-  }) async {
+  }) => _enqueue(() async {
     final card = _cards.firstWhere(
       (candidate) => candidate.id == cardId,
       orElse: () => throw const WalletDemoException(
@@ -112,7 +115,7 @@ class WalletDemoController extends ChangeNotifier {
       ),
     );
 
-    if (request.amount <= 0) {
+    if (!request.amount.isFinite || request.amount <= 0) {
       throw const WalletDemoException('Iznos mora biti veći od nule.');
     }
 
@@ -128,29 +131,52 @@ class WalletDemoController extends ChangeNotifier {
       status: WalletTransactionStatus.completed,
     );
 
-    _transactions = [transaction, ..._transactions];
-    await _persistAndNotify();
+    await _save(transactions: [transaction, ..._transactions]);
     return transaction;
-  }
+  });
 
-  Future<void> resetDemo() async {
-    await _store.clear(userId: _userId);
+  Future<void> resetDemo() => _enqueue(() async {
     final seed = _seedSnapshot(_now());
-    _cards = seed.cards;
-    _transactions = seed.transactions;
-    await _persistAndNotify();
+    await _save(cards: seed.cards, transactions: seed.transactions);
+  });
+
+  Future<T> _enqueue<T>(Future<T> Function() change) {
+    final result = _pendingChange.then((_) {
+      if (_disposed || !_isInitialized) {
+        throw const WalletDemoException(
+          'Demo novčanik trenutno nije dostupan.',
+        );
+      }
+      return change();
+    });
+    _pendingChange = result.then<void>((_) {}, onError: (Object _) {});
+    return result;
   }
 
-  Future<void> _persistAndNotify() async {
-    await _persist();
+  Future<void> _save({
+    List<WalletDemoCard>? cards,
+    List<WalletDemoTransaction>? transactions,
+  }) async {
+    final snapshot = WalletDemoSnapshot(
+      cards: cards ?? _cards,
+      transactions: transactions ?? _transactions,
+    );
+    try {
+      await _store.save(userId: _userId, snapshot: snapshot);
+    } catch (error) {
+      debugPrint('BSL WALLET SAVE ERROR: $error');
+      throw const WalletDemoException('Izmjena demo novčanika nije sačuvana.');
+    }
+    if (_disposed) return;
+    _cards = snapshot.cards;
+    _transactions = snapshot.transactions;
     notifyListeners();
   }
 
-  Future<void> _persist() async {
-    await _store.save(
-      userId: _userId,
-      snapshot: WalletDemoSnapshot(cards: _cards, transactions: _transactions),
-    );
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 
   static WalletDemoSnapshot _seedSnapshot(DateTime now) {

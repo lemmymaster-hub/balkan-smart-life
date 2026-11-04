@@ -37,6 +37,9 @@ class BslNavigationController extends ChangeNotifier {
   Completer<LatLng> _locationFixCompleter = Completer<LatLng>();
   LatLng? _latestRoadSnappedLocation;
   Future<void>? _cleanupFuture;
+  Completer<void>? _startFinished;
+  Completer<void>? _stopFinished;
+  Completer<void>? _cancelStart;
 
   late final NavigationVehicleMarkerController _vehicleMarkerController;
 
@@ -75,6 +78,7 @@ class BslNavigationController extends ChangeNotifier {
   bool get isGuidanceActive => _guidanceStarted;
   bool get isVehicleMarkerVisible => _vehicleMarkerController.isVisible;
   bool get shouldShowPanel => _stage != BslNavigationStage.idle;
+  bool get _startCancelled => _closed || _stopping;
 
   String get statusMessage {
     switch (_stage) {
@@ -149,6 +153,8 @@ class BslNavigationController extends ChangeNotifier {
     }
 
     _starting = true;
+    final finished = _startFinished = Completer<void>();
+    final cancelled = _cancelStart = Completer<void>();
     _destination = destination;
     _travelMode = travelMode;
     _navInfo = null;
@@ -158,7 +164,7 @@ class BslNavigationController extends ChangeNotifier {
 
     try {
       final termsAccepted = await _ensureTermsAccepted();
-      if (_closed) return;
+      if (_startCancelled) return;
 
       if (!termsAccepted) {
         _showError(
@@ -168,13 +174,14 @@ class BslNavigationController extends ChangeNotifier {
       }
 
       await _ensureNavigationSession();
-      if (_closed) return;
+      if (_startCancelled) return;
 
       await _configureCustomNavigationMap(controller, mapPadding);
+      if (_startCancelled) return;
 
       _setStage(BslNavigationStage.waitingForGps);
-      await _waitForRoadSnappedLocation();
-      if (_closed) return;
+      await _waitForRoadSnappedLocation(cancelled.future);
+      if (_startCancelled) return;
 
       if (_guidanceStarted) {
         await GoogleMapsNavigator.stopGuidance();
@@ -182,6 +189,7 @@ class BslNavigationController extends ChangeNotifier {
         await _vehicleMarkerController.stop();
       }
       await GoogleMapsNavigator.clearDestinations();
+      if (_startCancelled) return;
 
       _setStage(BslNavigationStage.calculatingRoute);
 
@@ -209,6 +217,7 @@ class BslNavigationController extends ChangeNotifier {
           ),
         ),
       );
+      if (_startCancelled) return;
 
       if (routeStatus != NavigationRouteStatus.statusOk) {
         _showError(
@@ -222,6 +231,7 @@ class BslNavigationController extends ChangeNotifier {
       final initialVehicleBearing = travelMode == BslNavigationTravelMode.driving
           ? await _resolveInitialVehicleBearing(snappedLocation)
           : null;
+      if (_startCancelled) return;
 
       await GoogleMapsNavigator.setAudioGuidance(
         NavigationAudioGuidanceSettings(
@@ -232,8 +242,10 @@ class BslNavigationController extends ChangeNotifier {
       );
 
       await controller.setNavigationUIEnabled(false);
+      if (_startCancelled) return;
       await GoogleMapsNavigator.startGuidance();
       _guidanceStarted = true;
+      if (_startCancelled) return;
       _setStage(BslNavigationStage.guiding);
       if (travelMode == BslNavigationTravelMode.driving) {
         await _vehicleMarkerController.start(
@@ -259,6 +271,9 @@ class BslNavigationController extends ChangeNotifier {
       _showError('Navigacija se trenutno ne može pokrenuti.', canRetry: true);
     } finally {
       _starting = false;
+      _cancelStart = null;
+      _startFinished = null;
+      finished.complete();
       _notifySafely();
     }
   }
@@ -289,8 +304,11 @@ class BslNavigationController extends ChangeNotifier {
   Future<void> stop() async {
     if (_closed || _stopping) return;
     _stopping = true;
+    final finished = _stopFinished = Completer<void>();
+    _cancelPendingStart();
 
     try {
+      await _startFinished?.future;
       if (_sessionInitialized) {
         if (_guidanceStarted) {
           await GoogleMapsNavigator.stopGuidance();
@@ -310,6 +328,8 @@ class BslNavigationController extends ChangeNotifier {
       _canRetry = false;
       _stage = BslNavigationStage.idle;
       _stopping = false;
+      _stopFinished = null;
+      finished.complete();
       _notifySafely();
     }
   }
@@ -340,6 +360,7 @@ class BslNavigationController extends ChangeNotifier {
       taskRemovedBehavior: TaskRemovedBehavior.quitService,
     );
     _sessionInitialized = true;
+    if (_closed) return;
     _latestRoadSnappedLocation = null;
     _locationFixCompleter = Completer<LatLng>();
     await _setupListeners();
@@ -396,9 +417,17 @@ class BslNavigationController extends ChangeNotifier {
     }
   }
 
-  Future<void> _waitForRoadSnappedLocation() async {
+  Future<void> _waitForRoadSnappedLocation(Future<void> cancelled) async {
     if (_latestRoadSnappedLocation != null) return;
-    await _locationFixCompleter.future.timeout(const Duration(seconds: 30));
+    await Future.any<void>([
+      _locationFixCompleter.future.then<void>((_) {}),
+      cancelled,
+    ]).timeout(const Duration(seconds: 30));
+  }
+
+  void _cancelPendingStart() {
+    final cancelled = _cancelStart;
+    if (cancelled != null && !cancelled.isCompleted) cancelled.complete();
   }
 
   void _handleRoadSnappedLocation(RoadSnappedLocationUpdatedEvent event) {
@@ -509,7 +538,7 @@ class BslNavigationController extends ChangeNotifier {
   }
 
   void _showError(String message, {bool canRetry = false}) {
-    if (_closed) return;
+    if (_closed || _stopping) return;
     _errorMessage = message;
     _canRetry = canRetry;
     _stage = BslNavigationStage.error;
@@ -563,6 +592,8 @@ class BslNavigationController extends ChangeNotifier {
   }
 
   Future<void> _performSessionCleanup() async {
+    await _startFinished?.future;
+    await _stopFinished?.future;
     await _cancelListeners();
     await _vehicleMarkerController.stop();
     if (!_sessionInitialized) return;
@@ -582,6 +613,7 @@ class BslNavigationController extends ChangeNotifier {
   @override
   void dispose() {
     _closed = true;
+    _cancelPendingStart();
     _vehicleMarkerController.dispose();
     _mapController = null;
     unawaited(_shutdownSession());

@@ -44,13 +44,13 @@ class _WeatherScreenState extends State<WeatherScreen> {
     try {
       final forecast = await request;
 
-      if (!mounted) return;
+      if (!mounted || !identical(weatherFuture, request)) return;
 
-      setState(() {
+      if (cityController.text.trim() == city) {
         cityController.text = forecast.location.name;
-      });
+      }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !identical(weatherFuture, request)) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.toString())));

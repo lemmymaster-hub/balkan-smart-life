@@ -13,30 +13,12 @@ import 'screens/login_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  try {
-    await Firebase.initializeApp();
-    debugPrint('Firebase initialized OK');
-
-    try {
-      await FirebaseAppCheck.instance.activate(
-        providerAndroid: kDebugMode
-            ? const AndroidDebugProvider()
-            : const AndroidPlayIntegrityProvider(),
-        providerApple: kDebugMode
-            ? const AppleDebugProvider()
-            : const AppleAppAttestWithDeviceCheckFallbackProvider(),
-      );
-      await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
-      debugPrint('Firebase App Check initialized OK');
-    } catch (error) {
-      debugPrint('Firebase App Check init error: $error');
-    }
-  } catch (e) {
-    debugPrint('Firebase init error: $e');
-  }
-
   final cityContext = CityContext();
-  await cityContext.load();
+  try {
+    await cityContext.load();
+  } catch (error) {
+    debugPrint('BSL city restore error: $error');
+  }
 
   runApp(
     MultiProvider(
@@ -51,8 +33,46 @@ Future<void> main() async {
   );
 }
 
-class BslApp extends StatelessWidget {
+Future<Stream<User?>> _initializeAuth() async {
+  await Firebase.initializeApp();
+  try {
+    await FirebaseAppCheck.instance.activate(
+      providerAndroid: kDebugMode
+          ? const AndroidDebugProvider()
+          : const AndroidPlayIntegrityProvider(),
+      providerApple: kDebugMode
+          ? const AppleDebugProvider()
+          : const AppleAppAttestWithDeviceCheckFallbackProvider(),
+    );
+    await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
+  } catch (error) {
+    debugPrint('Firebase App Check init error: $error');
+  }
+  return FirebaseAuth.instance.authStateChanges();
+}
+
+class BslApp extends StatefulWidget {
   const BslApp({super.key});
+
+  @override
+  State<BslApp> createState() => _BslAppState();
+}
+
+class _BslAppState extends State<BslApp> {
+  late Future<Stream<User?>> _auth = _initializeAuth();
+
+  Widget _authError() => Scaffold(
+    body: Center(
+      child: TextButton(
+        onPressed: () => setState(() => _auth = _initializeAuth()),
+        child: const Text('BSL prijava je nedostupna. Pokušaj ponovo.'),
+      ),
+    ),
+  );
+
+  static const _loading = Scaffold(
+    body: Center(child: CircularProgressIndicator()),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -60,20 +80,24 @@ class BslApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Balkan Smart Life',
       theme: ThemeData.dark(),
-      home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
+      home: FutureBuilder<Stream<User?>>(
+        future: _auth,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
-
-          if (snapshot.hasData) {
-            return const HomeScreen();
-          }
-
-          return const LoginScreen();
+          if (snapshot.connectionState != ConnectionState.done) return _loading;
+          if (snapshot.hasError) return _authError();
+          return StreamBuilder<User?>(
+            stream: snapshot.requireData,
+            builder: (context, session) {
+              if (session.hasError) return _authError();
+              if (session.connectionState == ConnectionState.waiting) {
+                return _loading;
+              }
+              final user = session.data;
+              return user == null
+                  ? const LoginScreen()
+                  : HomeScreen(key: ValueKey(user.uid));
+            },
+          );
         },
       ),
     );

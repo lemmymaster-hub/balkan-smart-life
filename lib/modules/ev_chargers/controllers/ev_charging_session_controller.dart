@@ -31,8 +31,13 @@ class EvChargingSessionController extends ChangeNotifier {
   String _userId = 'guest';
   DateTime _currentTime = DateTime.now();
   bool _isInitialized = false;
+  bool _disposed = false;
+  bool _saving = false;
 
-  EvChargingSession? get displaySession => _liveSession ?? _estimatedSession;
+  EvChargingSession? get displaySession {
+    if (_liveSession?.isActive == true) return _liveSession;
+    return _estimatedSession ?? _liveSession;
+  }
   EvChargingSession? get activeSession {
     final session = displaySession;
     return session?.isActive == true ? session : null;
@@ -44,7 +49,9 @@ class EvChargingSessionController extends ChangeNotifier {
 
   Future<void> initialize({required String userId}) async {
     _userId = userId.trim().isEmpty ? 'guest' : userId.trim();
-    _estimatedSession = await _store.load(userId: _userId);
+    final session = await _store.load(userId: _userId);
+    if (_disposed) return;
+    _estimatedSession = session;
     _currentTime = _now();
     _isInitialized = true;
     _syncTicker();
@@ -52,6 +59,7 @@ class EvChargingSessionController extends ChangeNotifier {
   }
 
   void setLiveSession(EvChargingSession? session) {
+    if (_disposed) return;
     if (session != null && session.isEstimated) {
       throw const EvChargingSessionException(
         'Live kanal je vratio procijenjenu sesiju.',
@@ -69,7 +77,7 @@ class EvChargingSessionController extends ChangeNotifier {
     required EvConnector connector,
   }) async {
     final powerKw = connector.powerKw;
-    if (powerKw == null || powerKw <= 0) {
+    if (powerKw == null || !powerKw.isFinite || powerKw <= 0) {
       throw const EvChargingSessionException(
         'Za ovaj priključak nije poznata nazivna snaga.',
       );
@@ -100,29 +108,39 @@ class EvChargingSessionController extends ChangeNotifier {
       message: 'Procjena prema nazivnoj snazi priključka.',
     );
 
-    _estimatedSession = session;
-    _currentTime = now;
-    await _store.save(userId: _userId, session: session);
-    _syncTicker();
-    notifyListeners();
+    await _saveEstimated(session);
   }
 
   Future<void> completeEstimated() async {
     final session = _estimatedSession;
     if (session == null || !session.isActive) return;
 
-    final now = _now();
-    final completed = session.complete(now);
-    _estimatedSession = completed;
-    _currentTime = now;
-    await _store.save(userId: _userId, session: completed);
-    _syncTicker();
-    notifyListeners();
+    await _saveEstimated(session.complete(_now()));
   }
 
-  Future<void> dismissEstimated() async {
-    _estimatedSession = null;
-    await _store.clear(userId: _userId);
+  Future<void> dismissEstimated() => _saveEstimated(null);
+
+  Future<void> _saveEstimated(EvChargingSession? session) async {
+    if (_disposed) return;
+    if (_saving) {
+      throw const EvChargingSessionException('Sačekaj da se sesija sačuva.');
+    }
+    _saving = true;
+    try {
+      if (session == null) {
+        await _store.clear(userId: _userId);
+      } else {
+        await _store.save(userId: _userId, session: session);
+      }
+    } catch (error) {
+      debugPrint('EV CHARGING SESSION SAVE ERROR: $error');
+      throw const EvChargingSessionException('Sesija punjenja nije sačuvana.');
+    } finally {
+      _saving = false;
+    }
+    if (_disposed) return;
+    _estimatedSession = session;
+    _currentTime = _now();
     _syncTicker();
     notifyListeners();
   }
@@ -148,6 +166,7 @@ class EvChargingSessionController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _ticker?.cancel();
     super.dispose();
   }

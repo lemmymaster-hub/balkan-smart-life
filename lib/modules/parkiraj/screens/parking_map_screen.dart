@@ -471,13 +471,10 @@ class _ParkingMapScreenState extends State<ParkingMapScreen> {
           _error = null;
 
           if (_selectedParking != null) {
-            final selectedStillExists = parkings.any(
-              (parking) => parking.id == _selectedParking!.id,
-            );
-
-            if (!selectedStillExists) {
-              _selectedParking = null;
-            }
+            final selectedId = _selectedParking!.id;
+            _selectedParking = parkings
+                .where((parking) => parking.id == selectedId)
+                .firstOrNull;
           }
         });
 

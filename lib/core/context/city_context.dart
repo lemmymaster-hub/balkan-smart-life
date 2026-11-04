@@ -22,13 +22,17 @@ class CityContext extends ChangeNotifier {
   });
 
   String _selectedCity = 'Pale';
+  int _selectionRevision = 0;
+  Future<void> _pendingSave = Future<void>.value();
 
   String get selectedCity => _selectedCity;
 
   List<String> get cities => BslAdministrativeAreas.displayNames;
 
   Future<void> load() async {
+    final revision = _selectionRevision;
     final prefs = await SharedPreferences.getInstance();
+    if (revision != _selectionRevision) return;
     final savedCity = prefs.getString(_storageKey);
     final area = BslAdministrativeAreas.findExact(savedCity ?? '');
 
@@ -39,26 +43,47 @@ class CityContext extends ChangeNotifier {
     notifyListeners();
 
     if (BslCities.findExact(area.displayName) == null) {
-      await _resolveAndCacheArea(area, prefs);
+      final resolved = await _resolveArea(area);
+      if (revision == _selectionRevision && resolved != null) {
+        await _queueSave(() async {
+          if (revision == _selectionRevision) {
+            BslCities.cacheResolvedCity(resolved);
+            await _persistResolvedCoordinates(resolved, prefs);
+          }
+        });
+      }
     }
   }
 
   Future<void> setCity(String city) async {
     final selectedArea = BslAdministrativeAreas.findExact(city);
 
-    if (selectedArea == null || selectedArea.displayName == _selectedCity) {
-      return;
-    }
+    if (selectedArea == null) return;
 
+    final revision = ++_selectionRevision;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_storageKey, selectedArea.displayName);
+    final resolved = await _resolveArea(selectedArea);
+    if (revision != _selectionRevision) return;
 
-    // Koordinate se rješavaju prije nego što novi izbor postane aktivan. Tako
-    // svaki map modul odmah dobija pravi centar umjesto BiH overview fallbacka.
-    await _resolveAndCacheArea(selectedArea, prefs);
+    await _queueSave(() async {
+      if (revision != _selectionRevision) return;
+      if (resolved != null) {
+        BslCities.cacheResolvedCity(resolved);
+        await _persistResolvedCoordinates(resolved, prefs);
+      }
+      await prefs.setString(_storageKey, selectedArea.displayName);
+      if (revision != _selectionRevision) return;
+      _selectedCity = selectedArea.displayName;
+      notifyListeners();
+    });
+  }
 
-    _selectedCity = selectedArea.displayName;
-    notifyListeners();
+  Future<void> _queueSave(Future<void> Function() action) {
+    final save = _pendingSave.then((_) => action());
+    _pendingSave = save.catchError((Object error) {
+      debugPrint('BSL CITY STORAGE ERROR: $error');
+    });
+    return save;
   }
 
   void _restoreResolvedCoordinates(
@@ -87,15 +112,9 @@ class CityContext extends ChangeNotifier {
     );
   }
 
-  Future<void> _resolveAndCacheArea(
-    BslAdministrativeArea area,
-    SharedPreferences prefs,
-  ) async {
+  Future<BslCity?> _resolveArea(BslAdministrativeArea area) async {
     final existing = BslCities.findExact(area.displayName);
-    if (existing != null) {
-      await _persistResolvedCoordinates(existing, prefs);
-      return;
-    }
+    if (existing != null) return existing;
 
     try {
       final result = await addressService
@@ -110,22 +129,21 @@ class CityContext extends ChangeNotifier {
         debugPrint(
           'BSL CITY GEOCODING: nema validnog BiH rezultata za ${area.displayName}',
         );
-        return;
+        return null;
       }
 
-      final resolvedCity = BslCity(
+      return BslCity(
         name: area.displayName,
         latitude: result.location.latitude,
         longitude: result.location.longitude,
       );
 
-      BslCities.cacheResolvedCity(resolvedCity);
-      await _persistResolvedCoordinates(resolvedCity, prefs);
     } catch (error, stackTrace) {
       // Izbor grada i dalje radi ako sistemski geocoder trenutno nije dostupan;
       // tada ostaje postojeći sigurni BiH fallback.
       debugPrint('BSL CITY GEOCODING ERROR (${area.displayName}): $error');
       debugPrintStack(stackTrace: stackTrace);
+      return null;
     }
   }
 
@@ -133,9 +151,10 @@ class CityContext extends ChangeNotifier {
     BslCity city,
     SharedPreferences prefs,
   ) async {
-    await prefs.setString(_resolvedNameKey, city.name);
+    await prefs.remove(_resolvedNameKey);
     await prefs.setDouble(_resolvedLatitudeKey, city.latitude);
     await prefs.setDouble(_resolvedLongitudeKey, city.longitude);
+    await prefs.setString(_resolvedNameKey, city.name);
   }
 
   static bool _isInsideBosniaAndHerzegovina(

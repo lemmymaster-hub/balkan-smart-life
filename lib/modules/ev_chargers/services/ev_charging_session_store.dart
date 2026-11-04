@@ -51,16 +51,19 @@ class SharedPreferencesEvChargingSessionStore
     required EvChargingSession session,
   }) async {
     final preferences = await _preferencesLoader();
-    await preferences.setString(
+    final saved = await preferences.setString(
       _storageKey(userId),
       jsonEncode(session.toMap()),
     );
+    if (!saved) throw StateError('Sesija punjenja nije upisana.');
   }
 
   @override
   Future<void> clear({required String userId}) async {
     final preferences = await _preferencesLoader();
-    await preferences.remove(_storageKey(userId));
+    if (!await preferences.remove(_storageKey(userId))) {
+      throw StateError('Sesija punjenja nije obrisana.');
+    }
   }
 
   String _storageKey(String userId) {
